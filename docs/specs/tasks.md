@@ -36,3 +36,9 @@ Format: checklist atomik, urut sesuai dependensi. Agent: kerjakan satu baris = s
 - [ ] Q4. Secrets: BETTER_AUTH_SECRET via wrangler secret put
 - [ ] Q5. Deploy: migrasi --remote → wrangler deploy → smoke test login+input transaksi
 - [ ] Q6. GitHub Actions CI (test → build → deploy dari main) — template di research/05 §5.3
+
+## Tambahan (keputusan pemilik, `docs/DECISIONS.md`)
+- [ ] X1. Auth email+password saja (tanpa OAuth/magic link) — `emailAndPassword` di Better-Auth
+- [ ] X2. Seed demo lokal idempoten: dompet + kategori + contoh transaksi (`src/lib/server/db/seed.ts`) — hanya `--local`
+- [ ] X3. Custom domain `akularping.my.id` di `routes` wrangler (`custom_domain: true`) + `BETTER_AUTH_URL`
+- [ ] X4. Monogram SVG "U" brutalist (komponen Logo + favicon)

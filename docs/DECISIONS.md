@@ -15,6 +15,14 @@ Semua role **wajib** mengikuti berkas ini. Bila keputusan di sini bertentangan d
 
 Larangan visual (dari skill antislop, tetap berlaku): gradien ungu-biru, kartu bersarang, font default tanpa alasan, teks pemasaran generik, kontras di bawah WCAG AA, target sentuh < 44px.
 
+## Produk & operasi
+| Aspek | Keputusan |
+|---|---|
+| Login | **Email + password saja** (Better-Auth `emailAndPassword`). Tanpa OAuth, tanpa magic link, tanpa verifikasi email |
+| Branding | Nama **Uangku** + **monogram huruf** bergaya brutalist (SVG sendiri). Tanpa ikon bawaan Lucide untuk logo |
+| Domain produksi | **akularping.my.id** (custom domain Cloudflare). Worker memakai `routes` dengan `custom_domain: true` |
+| Data awal | **Seed demo lokal saja** (`--local`); database produksi kosong, tanpa kategori bawaan |
+
 ## Kode
 | Aspek | Keputusan |
 |---|---|
