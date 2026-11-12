@@ -5,15 +5,6 @@
 	import type { PageData } from './$types';
 
 	let { data }: { data: PageData } = $props();
-
-	async function handleLogout() {
-		try {
-			await fetch('/api/auth/sign-out', { method: 'POST' });
-		} catch {
-			// ignore
-		}
-		window.location.href = '/login';
-	}
 </script>
 
 <svelte:head>
@@ -94,16 +85,15 @@
 			Keluar dari akun Anda pada perangkat ini. Untuk mengakses kembali data Anda, silakan masuk dengan email dan kata sandi.
 		</p>
 
-		<div class="pt-2">
+		<form method="POST" action="?/logout" class="pt-2">
 			<Button
-				type="button"
+				type="submit"
 				variant="outline"
 				class="border-danger text-danger hover:bg-danger hover:text-white"
-				onclick={handleLogout}
 			>
 				Keluar dari Akun
 			</Button>
-		</div>
+		</form>
 	</Card>
 
 	<div class="text-center pt-4">
