@@ -40,6 +40,18 @@ Format: checklist atomik, urut sesuai dependensi. Agent: kerjakan satu baris = s
 
 ## Fase 1 lanjutan
 - [ ] F6. Upload struk ke R2 (validasi 5 MB, `image/*`) + endpoint lihat struk
-- [ ] F9. Export CSV streaming
+- [x] F9. Export CSV streaming (`/api/export`, BOM + CRLF + escape RFC 4180)
 - [ ] Z1. Budget per kategori
-- [ ] Z2. Deploy produksi + smoke test (perlu kredensial)
+- [x] Z2. Deploy produksi + smoke test (workers.dev; custom domain tertunda karena izin DNS OAuth)
+
+## Sprint 3 — Analisis & tema
+Rencana (disetujui pemilik 2026-11-12): halaman analisis dengan filter + toggle tema gelap.
+
+- [ ] A1. Tema gelap: kelas `dark` di `<html>` (kelas ini tidak pernah dipasang sebelumnya, jadi tema gelap mati), tombol siklus sistem/terang/gelap di kanan header, tersimpan di `localStorage['uangku-theme']`, skrip anti-kedip di `<head>`. Pemilik: ui-design.
+- [ ] A2. `src/lib/server/stats.ts`: preset rentang (minggu ini Senin–sekarang, bulan ini, tahun ini, semua, kustom), pembuatan bucket harian/mingguan/bulanan (UTC, minggu mulai Senin), celah terisi 0. Pemilik: domain-backend.
+- [ ] A3. `repos/stats.ts` + `services/stats.ts` + `src/routes/analytics/+page.server.ts`: ringkasan rentang, seri masuk/keluar, per kategori, per dompet, perbandingan periode sebelumnya, filter dompet/kategori/jenis. Transfer dikecualikan dari masuk/keluar/net. Pemilik: domain-backend.
+- [ ] A4. `/analytics` UI: kontrol filter gaya GET (URL bisa dibagikan), kartu ringkasan, grafik batang pakai ulang `CashflowChart.svelte`, daftar kategori dengan persentase, tabel dompet, baris perbandingan, empty state, tautan masuk dari nav desktop + beranda. Pemilik: ui-design.
+- [ ] A5. Uji: preset rentang, batas inklusif, bucket + celah, agregasi, transfer dikecualikan, filter, scope user, `previous`. Pemilik: qa-review.
+- [ ] A6. Gerbang `scripts/check.sh` di HEAD + verifikasi produksi via curl (sesi nyata) + deploy. Pemilik: orchestrator.
+
+Catatan lingkup: tab harian/mingguan/bulanan TIDAK dipasang di beranda; beranda tetap grafik 6 bulan + tautan ke `/analytics`, supaya kontrol chart hanya ada di satu tempat dan cache KV dashboard (kunci: user) tidak perlu berubah.
