@@ -88,3 +88,27 @@ Larangan visual (dari skill antislop, tetap berlaku): gradien ungu-biru, kartu b
 ## Verifikasi produksi
 - `uangku-app/scripts/smoke.sh` memeriksa `/login` 200, `/api/auth/get-session` 200, dan `/` 303 — cukup untuk menangkap "binding mati" yang di UI tampak seperti redirect biasa.
 - Urutan hapus data bila perlu mengosongkan DB: `transactions` → `wallets` → `categories` → `session`/`account` → `"user"`. Menghapus `"user"` langsung gagal karena FK `transactions.wallet_id` memakai `onDelete: restrict`.
+
+## Guard: `Accept: image/*` tidak boleh membuat halaman publik (perbaikan produksi)
+- `isPublicRequest` mengembalikan `true` bila header `Accept` memuat substring `image/`. Chrome dan Safari mengirim `image/avif, image/webp` pada navigasi halaman, jadi SETIAP request browser dianggap publik: pengguna tanpa sesi melihat beranda, bukan `/login`. `curl` tanpa header tidak menunjukkan gejala, sehingga bug hanya tampak di browser.
+- Perbaikan di `src/lib/server/guard.ts`: request gambar diakui publik hanya bila `Accept` memuat `image/` **dan** tidak memuat `text/html`. `tests/guard.test.ts` menambah regresi dengan header `Accept` versi Chrome.
+- Bukti produksi: `curl -H 'Accept: text/html,...,image/avif,image/webp,...' /` → 303 `/login?redirectTo=%2F` (sebelumnya 200).
+
+## `sr-only` pada `<table>` tidak memotong lebar (geser horizontal di ponsel)
+- `sr-only` memakai `overflow: hidden` + `width: 1px`, tetapi `overflow` tidak berlaku untuk `display: table`. Tabel ringkasan grafik (`CashflowChart.svelte`) tetap 812 px dan melebarkan dokumen menjadi 745 px, jadi nav bawah `fixed` dapat kotak selebar dokumen dan item di luar viewport 390 px. Gejalanya terbaca seperti "nav tidak responsif".
+- Perbaikan: bungkus `<table>` dengan `<div class="sr-only">`, tanpa kelas pada tabelnya. Ponsel 320/390 px: `documentElement.scrollWidth == clientWidth` (dulu 744/745).
+
+## Kontras hero beranda
+- Teks hero memakai `text-neutral-900` di atas `bg-brand` (teal-500 `oklch(0.5 0.14 165)`, luminansi 0.146): rasio 3.35:1, gagal WCAG AA 4.5:1. Nilai dihitung dari warna hasil render.
+- Perbaikan: token `text-brand-foreground` (putih di terang, hitam di gelap) pada `src/routes/+page.svelte`. Rasio terukur 5.35:1 (terang) dan 11.77:1 (gelap).
+
+## Bottom navigation
+- Label nav naik dari 10 px ke `text-xs` (12 px, skala yang sudah dipakai aplikasi) supaya tetap terbaca; tiap item punya `aria-current="page"` saat aktif dan umpan balik tekan `active:bg-surface-subtle` (sebelumnya hanya `hover`, tidak ada reaksi pada sentuh).
+- Item nav terukur di dalam viewport: 320 px → x 4/66/191/254, lebar 62 px; 390 px → x 4/80/233/310, lebar 76 px. Semua ≥ 44×44 px.
+
+## F9 Ekspor CSV (`/api/export`)
+- Kolom: `tanggal,tipe,dompet,kategori,jumlah,catatan`; pemisah baris CRLF; BOM UTF-8 (`EF BB BF`) supaya Excel membaca aksen dengan benar; escape RFC 4180 (kutip ganda menjadi `""`).
+- Baris transfer memakai nama dompet tujuan pada kolom kategori sebagai `-> Nama Dompet`. Jumlah selalu integer rupiah tanpa desimal.
+- Repositori membaca per 200 baris lewat `TransactionsRepo.iterateAll` (kursor stabil `occurred_at, id`), respons di-stream, tidak ada penampung seluruh data di memori. Tanpa R2.
+- Bukti produksi (3 transaksi uji): `200`, `content-type: text/csv; charset=utf-8`, `content-disposition: attachment; filename="uangku-transaksi-YYYY-MM-DD.csv"`, 3 byte pertama `ef bb bf`, catatan `Makan, "sate" ayam` tersimpan sebagai `"Makan, ""sate"" ayam"`, `0` nilai berdesimal, kategori kosong tetap kosong, transfer `-> Dompet Uji 2`.
+- Uji unit: `tests/csv-export.test.ts` (6 uji; decoder uji memakai `ignoreBOM: true`, karena `TextDecoder` bawaan membuang BOM).
