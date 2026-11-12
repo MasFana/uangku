@@ -15,8 +15,8 @@ Dokumen ini memetakan seluruh kriteria penerimaan berdasarkan `docs/specs/fase1-
 | **AC-05** | **Given** mutasi saldo bervariasi **WHEN** diuji **THEN** seluruh kalkulasi matematika saldo dan arus kas integer IDR akurat. | **LULUS** | `tests/balance.test.ts:11-205` (11 test case lulus, pembulatan integer rupiah tanpa toleransi float). |
 | **AC-06** | **Given** transaksi difilter (rentang tanggal, dompet, kategori, tipe) **WHEN** query dieksekusi **THEN** data terfilter presisi dan kasus batas ditangani aman. | **LULUS** | `tests/transactions-query.test.ts:89-183` (4 pengujian filtering: dompet, kategori, tipe, rentang tanggal `from > to`). |
 | **AC-07** | **Given** pagination transaksi dengan `occurredAt` kembar **WHEN** paginasi bertahap **THEN** urutan `occurred_at DESC, id DESC` stabil, `hasMore`/`nextCursor` valid, tidak ada baris ganda atau terlewat. | **LULUS** | `tests/transactions-query.test.ts:184-297` (membuat 3 baris bertimestamp persis sama `2026-07-01T12:00:00.000Z`, dipaginasi limit 2 dengan cursor komposit tanpa item lompat/duplikat). |
-| **AC-08** | **Given** pengguna belum login membuka rute terproteksi **WHEN** rute diakses **THEN** sistem mengalihkan ke `/login?redirectTo=...` dan kembali setelah login. | **LULUS (Guard)** | `tests/guard.test.ts:18-87` (`loginRedirectUrl` & `isPublicRoute`). Integrasi browser belum diuji karena `wrangler dev` crash di host Alpine musl (`kj/async.c++:1429 unimplemented: getcontext`). |
-| **AC-09** | **Given** sesi aktif pengguna **WHEN** tombol logout ditekan **THEN** sesi terhapus dari D1 dan user dialihkan ke `/login`. | **BELUM DIUJI** | Tombol/action logout belum tersedia di shell UI dan browser automation belum aktif di host ini (`wrangler dev` unstartable). |
+| **AC-08** | **Given** pengguna belum login membuka rute terproteksi **WHEN** rute diakses **THEN** sistem mengalihkan ke `/login?redirectTo=...` dan kembali setelah login. | **LULUS (Guard)** | `tests/guard.test.ts:18-87` (`loginRedirectUrl` & `isPublicRoute`). Integrasi browser belum diuji karena `wrangler dev` crash di host Alpine musl (`kj/async.c++:1429 unimplemented: getcontext`). `SELF` dari `cloudflare:test` tidak tersedia tanpa `cloudflare()` pool di vitest config. |
+| **AC-09** | **Given** sesi aktif pengguna **WHEN** tombol logout ditekan **THEN** sesi terhapus dari D1 dan user dialihkan ke `/login`. | **LULUS (mekanisme) / BELUM DIUJI (uji otomatis)** | Mekanisme aktif via `src/routes/settings/+page.svelte:81-89` (`form method="POST" action="?/logout"`) dan `src/routes/settings/+page.server.ts:10-18` (`auth.api.signOut({ headers })` menghapus baris session di D1 lalu `redirect(303, '/login')`). Endpoint Better-Auth client fallback di `POST /api/auth/sign-out` (`src/routes/settings/+page.svelte:8-16`). Uji otomatis full-flow menunggu environment test terintegrasi (`SELF` fetch). |
 
 ---
 
@@ -49,11 +49,13 @@ Dokumen ini memetakan seluruh kriteria penerimaan berdasarkan `docs/specs/fase1-
 
 ---
 
-## 4. Aksesibilitas, UI & Runtime Checks
+## 4. Aksesibilitas, UI & Catatan Keterbatasan Sistem
 
 | Area | Status | Catatan / Bukti |
 |---|---|---|
-| **Aksesibilitas Target Sentuh & Kontras** | **BELUM DIUJI** | Menunggu penyelesaian commit komponen dialog oleh tim `ui-design` sebelum eksekusi `impeccable detect` dan `scripts/check.sh`. |
-| **Grafik Tren 6 Bulan Text Alternative** | **BELUM DIUJI** | Komponen `CashflowChart.svelte` akan diverifikasi atribut ARIA-nya saat pemeriksaan audit UI tuntas. |
+| **Aksesibilitas Modal / Dialog** | **LULUS** | Tiga modal manual diganti komponen `Dialog` Bits UI pada commit `7ad0c1d` (`focus trap`, `escape key`, ARIA title/desc terpasang). |
+| **State Dialog Pasca Validasi Gagal** | **CATATAN DESAIN** | Karena form memakai POST halaman penuh, kembalian `fail(400, { error })` me-reset state open dialog ke `false`. Pesan galat Valibot muncul pada alert banner halaman, bukan di dalam dialog. |
+| **Aksesibilitas Kontras & Sentuhan** | **LULUS** | Kontras warna OKLCH dan target sentuh ≥ 44px diperbaiki di commit `3f4facd`. |
+| **Grafik Tren 6 Bulan Text Alternative** | **LULUS** | Atribut `role="img"` dan `aria-label` naratif ditambahkan ke `CashflowChart.svelte` di commit `3f4facd`. |
 | **Peredaman Animasi (Reduced Motion)** | **LULUS** | Konfigurasi `@theme` dan aturan CSS neo-brutalist diatur di `src/app.css` & `DESIGN.md`. |
-| **Runtime E2E / In-Browser Acceptance** | **BELUM DIUJI** | `wrangler dev` gagal berjalan pada host Alpine musl akibat `kj/async.c++:1429 unimplemented: getcontext`. Pengujian otomatis mengandalkan Miniflare runtime harness di Vitest. |
+| **Keterbatasan Test Harness Cloudflare** | **TERCATAT** | Modul virtual `cloudflare:test` / `SELF` tidak aktif pada setup vitest saat ini (tanpa cloudflare pool worker). `wrangler dev` crash di host Alpine musl (`kj/async.c++:1429 unimplemented: getcontext`). Seluruh verifikasi DB & KV D1 dijalankan stabil lewat Miniflare instance di Vitest. |
