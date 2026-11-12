@@ -56,3 +56,11 @@ Larangan visual (dari skill antislop, tetap berlaku): gradien ungu-biru, kartu b
 - Akar masalah: pekerjaan yang sudah berfungsi dibiarkan **belum ter-commit** di satu pohon kerja bersama, lalu dihapus oleh perintah pembersihan role lain.
 - Aturan: commit segera setelah pekerjaan berfungsi; dilarang `git clean`/`git reset`/`git checkout`/`git restore`/`git stash` di pohon kerja bersama (lihat `TEAM.md`).
 - Akibat yang harus diingat: setiap laporan "uji lulus" tidak sah lagi setelah berkas ujinya hilang — verifikasi harus diulang setelah berkas ditulis ulang dan di-commit.
+
+## Alias `$lib` di SvelteKit 3
+- SvelteKit 3 mencabut `$lib` bawaan (`module_removed_lib`). Alias dipasang di tingkat Vite: `resolve.alias` `$lib: fileURLToPath(new URL('./src/lib', import.meta.url))` pada `vite.config.ts`.
+- Opsi `alias` milik SvelteKit **tidak** dipakai: sudah deprecated (`config_option_deprecated_alias`). Alias Vite juga menyelesaikan pemeriksaan `module_removed_lib` karena plugin berhenti lebih dulu bila `this.resolve()` berhasil.
+- Dipilih alias, bukan migrasi ke `#lib`, karena keluaran `shadcn-svelte add` memakai `$lib/...` dan `components.json` memakai alias itu.
+
+## Perintah berat di host ini
+- `npm run check` (~3 mnt), `npm run build` (~3 mnt), dan `npx vitest run` (~1,5–3 mnt) harus dijalankan **berurutan**, tidak bersamaan antar-role. RAM host 1,9 GB; perintah berat serentak menyebabkan timeout (kejadian: `npm run check` timeout 2×).
