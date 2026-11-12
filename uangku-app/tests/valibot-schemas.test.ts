@@ -208,3 +208,30 @@ describe('ListTransactionsQuerySchema', () => {
 		expect(result.success).toBe(false);
 	});
 });
+
+describe('nullable id dari form', () => {
+	it('mengubah categoryId kosong menjadi null pada CreateTransactionSchema', () => {
+		const result = v.parse(CreateTransactionSchema, {
+			walletId: 'w1',
+			categoryId: '',
+			type: 'expense',
+			amount: 50000
+		});
+		expect(result.categoryId).toBeNull();
+	});
+
+	it('mengubah categoryId kosong menjadi null pada UpdateTransactionSchema', () => {
+		const result = v.parse(UpdateTransactionSchema, { categoryId: '' });
+		expect(result.categoryId).toBeNull();
+	});
+
+	it('membiarkan categoryId terisi apa adanya', () => {
+		const result = v.parse(CreateTransactionSchema, {
+			walletId: 'w1',
+			categoryId: 'cat-1',
+			type: 'income',
+			amount: 1000
+		});
+		expect(result.categoryId).toBe('cat-1');
+	});
+});

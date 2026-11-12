@@ -65,6 +65,12 @@ export const load: PageServerLoad = async (event) => {
 	}
 };
 
+// <input type="date"> mengirim YYYY-MM-DD dan repo membandingkan occurred_at
+// sebagai ISO UTC tengah malam. Nilai di luar format dilewatkan apa adanya supaya
+// skema validasi yang menolaknya dengan pesan jelas.
+const occurredAtFrom = (date: string): string =>
+	/^\d{4}-\d{2}-\d{2}$/.test(date) ? `${date}T00:00:00.000Z` : date;
+
 export const actions: Actions = {
 	create: async (event) => {
 		const formData = await event.request.formData();
@@ -78,7 +84,13 @@ export const actions: Actions = {
 			const note = formData.get('note')?.toString() || undefined;
 
 			try {
-				await createTransfer(event, { fromWalletId, toWalletId, amount, date, note });
+				await createTransfer(event, {
+					sourceWalletId: fromWalletId,
+					targetWalletId: toWalletId,
+					amount,
+					occurredAt: occurredAtFrom(date),
+					note
+				});
 				return { success: true };
 			} catch (err: unknown) {
 				const message = err instanceof Error ? err.message : 'Gagal memproses transfer';
@@ -95,7 +107,14 @@ export const actions: Actions = {
 		const note = formData.get('note')?.toString() || undefined;
 
 		try {
-			await createTransaction(event, { walletId, categoryId, amount, type, date, note });
+			await createTransaction(event, {
+				walletId,
+				categoryId,
+				amount,
+				type,
+				occurredAt: occurredAtFrom(date),
+				note
+			});
 			return { success: true };
 		} catch (err: unknown) {
 			const message = err instanceof Error ? err.message : 'Gagal mencatat transaksi';
@@ -114,7 +133,14 @@ export const actions: Actions = {
 		const note = formData.get('note')?.toString() || undefined;
 
 		try {
-			await updateTransaction(event, id, { walletId, categoryId, amount, type, date, note });
+			await updateTransaction(event, id, {
+				walletId,
+				categoryId,
+				amount,
+				type,
+				occurredAt: occurredAtFrom(date),
+				note
+			});
 			return { success: true };
 		} catch (err: unknown) {
 			const message = err instanceof Error ? err.message : 'Gagal memperbarui transaksi';

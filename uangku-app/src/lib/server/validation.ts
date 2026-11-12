@@ -34,24 +34,30 @@ export const UpdateCategorySchema = v.object({
 
 // --- Transactions ---
 
+// Form HTML mengirim kolom opsional yang kosong sebagai '' — kolom FK harus NULL.
+// Tanpa ini D1 menolak insert dengan FOREIGN KEY constraint failed.
+const optionalId = v.optional(
+	v.nullable(v.pipe(v.string(), v.transform((value) => (value === '' ? null : value))))
+);
+
 export const CreateTransactionSchema = v.object({
 	walletId: v.pipe(v.string(), v.minLength(1, 'Dompet wajib dipilih')),
-	categoryId: v.optional(v.nullable(v.string())),
+	categoryId: optionalId,
 	type: v.picklist(transactionTypes, 'Tipe transaksi tidak valid'),
 	amount: v.pipe(
 		v.number(),
 		v.integer('Jumlah harus bilangan bulat'),
 		v.minValue(1, 'Jumlah harus lebih besar dari 0')
 	),
-	transferWalletId: v.optional(v.nullable(v.string())),
+	transferWalletId: optionalId,
 	note: v.optional(v.nullable(v.pipe(v.string(), v.maxLength(200)))),
 	occurredAt: v.optional(v.pipe(v.string(), v.isoTimestamp('Format tanggal tidak valid'))),
-	receiptKey: v.optional(v.nullable(v.string()))
+	receiptKey: optionalId
 });
 
 export const UpdateTransactionSchema = v.object({
 	walletId: v.optional(v.pipe(v.string(), v.minLength(1))),
-	categoryId: v.optional(v.nullable(v.string())),
+	categoryId: optionalId,
 	amount: v.optional(
 		v.pipe(
 			v.number(),
@@ -61,7 +67,7 @@ export const UpdateTransactionSchema = v.object({
 	),
 	note: v.optional(v.nullable(v.pipe(v.string(), v.maxLength(200)))),
 	occurredAt: v.optional(v.pipe(v.string(), v.isoTimestamp('Format tanggal tidak valid'))),
-	receiptKey: v.optional(v.nullable(v.string()))
+	receiptKey: optionalId
 });
 
 export const TransferSchema = v.object({

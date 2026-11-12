@@ -70,3 +70,21 @@ Larangan visual (dari skill antislop, tetap berlaku): gradien ungu-biru, kartu b
 - Resource dibuat 2026-11-12: D1 `APP_DB` id `e73aa0f0-258d-400b-8bd9-e93bb39a48b3` (region APAC), KV `CACHE` id `cafd7699ba264d41873423b82644b8c1`.
 - **R2 dinonaktifkan sementara** di `wrangler.jsonc`: `wrangler r2 bucket create` gagal dengan `code 10042 Please enable R2 through the Cloudflare Dashboard`. Binding `RECEIPTS` dan bucket `uangku-receipts` dinyalakan kembali saat F6 (upload struk) dikerjakan. Pemilik harus mengaktifkan R2 di dashboard dulu.
 - Secret wajib di produksi: `BETTER_AUTH_SECRET` (acak, ≥32 karakter), `BETTER_AUTH_URL=https://akularping.my.id`. Secret `AI_*` belum diisi karena `.dev.vars` masih berisi placeholder dan fitur AI belum diimplementasikan.
+
+## Akses binding di produksi: `cloudflare:workers`, bukan `event.platform`
+- SvelteKit 3 membaca `event.platform` dari opsi `server.respond({ platform })`. `@sveltejs/adapter-cloudflare@8.0.2` hanya mengirim `env` ke `server.init` dan **tidak** mengirim `platform` (lihat `node_modules/@sveltejs/adapter-cloudflare/files/worker.js`).
+- Akibat di produksi: `event.platform` selalu `undefined` (di dev terisi lewat `platformProxy`), semua akses D1 mati, `/api/auth/*` balas 500 `{"error":"Database binding APP_DB missing"}`, dan guard menolak semua halaman karena cabang `env?.APP_DB` gagal.
+- Perbaikan: `hooks.server.ts` membaca `import { env } from 'cloudflare:workers'` (modul yang disediakan adapter untuk dev dan produksi) dan menyimpannya di `event.locals.env`; `event.platform?.env` tetap dipakai lebih dulu sebagai cadangan. Route auth membaca `event.locals.env`.
+- Akses `cloudflare:workers` ditunda sampai request dan dijaga `building` — proxy-nya melempar bila disentuh saat build.
+
+## Kolom FK dari form: `''` harus menjadi `null`
+- Input opsional mengirim string kosong. Kolom FK (`category_id`, `transfer_wallet_id`, `receipt_key`) menolak `''` dengan `FOREIGN KEY constraint failed (SQLITE_CONSTRAINT_FOREIGNKEY)`, sehingga simpan transaksi gagal 400 di produksi.
+- Perbaikan: `optionalId` di `src/lib/server/validation.ts` mengubah `''` menjadi `null` pada `CreateTransactionSchema` dan `UpdateTransactionSchema`; uji regresi di `tests/valibot-schemas.test.ts`.
+
+## Nama field form harus dipetakan di action
+- Form mengirim `fromWalletId`/`toWalletId` dan `date`, sedangkan `TransferSchema` memakai `sourceWalletId`/`targetWalletId` dan skema transaksi memakai `occurredAt`. Akibatnya transfer gagal 400 (`Invalid key: Expected "sourceWalletId"`) dan tanggal pilihan pengguna diabaikan (selalu `now`).
+- Perbaikan di `src/routes/transactions/+page.server.ts`: pemetaan nama field eksplisit dan `occurredAtFrom()` yang mengubah `YYYY-MM-DD` menjadi ISO UTC tengah malam, konsisten dengan perbandingan filter di `src/lib/server/repos/transactions.ts`.
+
+## Verifikasi produksi
+- `uangku-app/scripts/smoke.sh` memeriksa `/login` 200, `/api/auth/get-session` 200, dan `/` 303 — cukup untuk menangkap "binding mati" yang di UI tampak seperti redirect biasa.
+- Urutan hapus data bila perlu mengosongkan DB: `transactions` → `wallets` → `categories` → `session`/`account` → `"user"`. Menghapus `"user"` langsung gagal karena FK `transactions.wallet_id` memakai `onDelete: restrict`.

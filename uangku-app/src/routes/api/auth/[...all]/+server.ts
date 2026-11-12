@@ -2,8 +2,8 @@ import type { RequestHandler } from '@sveltejs/kit';
 import { createAuth } from '../../../../lib/server/auth';
 
 export const fallback: RequestHandler = async (event) => {
-	const platformAny = event.platform as { env?: unknown } | undefined;
-	const env = (platformAny?.env ?? {}) as Parameters<typeof createAuth>[0];
+	// `event.platform` kosong di produksi (lihat hooks.server.ts); pakai env dari locals.
+	const env = (event.locals.env ?? event.platform?.env ?? {}) as Parameters<typeof createAuth>[0];
 	if (!env.APP_DB) {
 		return new Response(JSON.stringify({ error: 'Database binding APP_DB missing' }), {
 			status: 500,

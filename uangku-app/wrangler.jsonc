@@ -29,11 +29,5 @@
 			"binding": "CACHE",
 			"id": "cafd7699ba264d41873423b82644b8c1"
 		}
-	],
-	"routes": [
-		{
-			"pattern": "akularping.my.id",
-			"custom_domain": true
-		}
 	]
 }

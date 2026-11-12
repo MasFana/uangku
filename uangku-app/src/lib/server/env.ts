@@ -7,7 +7,7 @@ export type AppEnv = Env;
  * Throws an explicit error if bindings are unavailable.
  */
 export function getPlatformEnv(event: RequestEvent): AppEnv {
-	const env = event.platform?.env;
+	const env = (event.locals?.env ?? event.platform?.env) as AppEnv | undefined;
 	if (!env) {
 		throw new Error(
 			'Cloudflare platform environment is not available. Ensure platformProxy is configured during dev.'

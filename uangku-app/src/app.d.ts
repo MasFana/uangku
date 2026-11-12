@@ -5,6 +5,7 @@ declare global {
 	namespace App {
 		// interface Error {}
 		interface Locals {
+			env?: Cloudflare.Env;
 			db?: AppDatabase;
 			r2?: R2Bucket;
 			kv?: KVNamespace;
@@ -24,3 +25,4 @@ declare global {
 }
 
 export {};
+

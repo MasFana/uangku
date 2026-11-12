@@ -1,13 +1,21 @@
 import { redirect } from '@sveltejs/kit';
 import type { Handle } from '@sveltejs/kit/hooks';
 import { building } from '$app/env';
+import { env as workerEnv } from 'cloudflare:workers';
 import { svelteKitHandler } from 'better-auth/svelte-kit';
 import { createDb } from '$lib/server/db/client';
 import { createAuth } from '$lib/server/auth';
 import { isPublicRequest, loginRedirectUrl } from '$lib/server/guard';
 
 export const handle: Handle = async ({ event, resolve }) => {
-	const env = event.platform?.env;
+	// SvelteKit 3 membaca `event.platform` dari opsi `server.respond({ platform })`,
+	// dan adapter-cloudflare 8.0.2 tidak mengirimkan opsi itu — hanya `env` ke
+	// `server.init`. Di produksi `event.platform` karena itu selalu undefined dan
+	// binding harus dibaca dari `cloudflare:workers`, yang disediakan adapter untuk
+	// dev maupun produksi. Aksesnya ditunda sampai request agar tidak menyentuh
+	// proxy saat build.
+	const env = building ? undefined : ((event.platform?.env ?? workerEnv) as Env);
+	event.locals.env = env;
 
 	if (env?.APP_DB) {
 		event.locals.db = createDb(env.APP_DB);
