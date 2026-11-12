@@ -31,7 +31,7 @@ Format: checklist atomik, urut sesuai dependensi. Agent: kerjakan satu baris = s
 
 ## QA & Deploy
 - [ ] Q1. vitest-pool-workers: kalkulasi saldo, transfer, filter list
-- [ ] Q2. `npx impeccable detect src/` — nol P0/P1
+- [ ] Q2. `/root/.claude/skills/impeccable/scripts/impeccable detect --json src/` — nol P0/P1
 - [ ] Q3. svelte-check + build lulus; cek bundle < 30 MB
 - [ ] Q4. Secrets: BETTER_AUTH_SECRET via wrangler secret put
 - [ ] Q5. Deploy: migrasi --remote → wrangler deploy → smoke test login+input transaksi

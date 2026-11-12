@@ -13,7 +13,7 @@ Orchestrator: **Pi** (sesi utama). Semua laporan task ditulis dalam Bahasa Indon
 - Uang selalu integer rupiah. Tidak ada float. Tidak ada `fs`.
 - Binding D1/R2/KV diakses dari `event.platform.env` (adapter ^8: `cloudflare:workers` env) — **jangan** di module scope.
 - Sebelum lapor selesai: jalankan `npm run check` dan test terkait, lalu tulis hasilnya apa adanya (termasuk yang gagal).
-- UI: ikuti `DESIGN.md` dan `docs/DECISIONS.md`; jalankan `npx impeccable detect src/` dan perbaiki temuan P0/P1. Muat skill `antislop` (+ `antislop-ui`, `antislop-human`, `antislop-layoutmobile` sesuai kebutuhan) dari `/root/.agents/skills/` dan patuhi isinya.
+- UI: ikuti `DESIGN.md` dan `docs/DECISIONS.md`; jalankan `/root/.claude/skills/impeccable/scripts/impeccable detect --json src/` dan perbaiki temuan P0/P1. Muat skill `antislop` (+ `antislop-ui`, `antislop-human`, `antislop-layoutmobile` sesuai kebutuhan) dari `/root/.agents/skills/` dan patuhi isinya.
 
 ## Peta kepemilikan file
 
@@ -50,12 +50,12 @@ Orchestrator: **Pi** (sesi utama). Semua laporan task ditulis dalam Bahasa Indon
 3. `src/app.html`: lang `id`, meta viewport, font stack.
 4. Shell: `+layout.svelte` mobile-first (bottom nav / FAB), `+error.svelte`.
 5. Halaman `/login` & `/register` (form + state loading/error, target sentuh ≥44px).
-6. Jalankan `npx impeccable detect src/`.
+6. Jalankan `/root/.claude/skills/impeccable/scripts/impeccable detect --json src/`.
 
 ### qa-review
 1. `vitest.config.ts`: `defineWorkersConfig` + `wrangler.configPath`, pool workers.
 2. `tests/`: kalkulasi saldo (happy + edge: dompet tanpa transaksi, transfer keluar>masuk, transaksi masa depan), scope `user_id`, validasi Valibot.
-3. `scripts/check.sh`: `npm run check` + `vitest run` + `npx impeccable detect src/` — exit non-zero bila gagal.
+3. `scripts/check.sh`: `npm run check` + `vitest run` + `/root/.claude/skills/impeccable/scripts/impeccable detect --json src/` — exit non-zero bila gagal.
 4. `.github/workflows/ci.yml`: svelte-check → test → build (tanpa deploy).
 5. `docs/qa/checklist.md`: kriteria terima Fase 1 dari `fase1-prd.md` §7 sebagai daftar periksa.
 
