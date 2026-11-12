@@ -8,6 +8,7 @@
 		actionLabel?: string;
 		actionHref?: string;
 		onAction?: () => void;
+		onclick?: () => void;
 		icon?: Snippet;
 	}
 
@@ -17,8 +18,14 @@
 		actionLabel,
 		actionHref,
 		onAction,
+		onclick: onClickProp,
 		icon
 	}: Props = $props();
+
+	const handleAction = () => {
+		if (onAction) onAction();
+		if (onClickProp) onClickProp();
+	};
 </script>
 
 <div class="flex flex-col items-center justify-center text-center p-8 border-2 border-dashed border-border/60 rounded-lg bg-surface/50">
@@ -49,8 +56,8 @@
 			>
 				{actionLabel}
 			</a>
-		{:else if onAction}
-			<Button variant="primary" size="md" onclick={onAction}>
+		{:else if onAction || onClickProp}
+			<Button variant="primary" size="md" onclick={handleAction}>
 				{actionLabel}
 			</Button>
 		{/if}

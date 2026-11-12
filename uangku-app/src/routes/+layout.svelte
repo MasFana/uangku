@@ -61,11 +61,19 @@
 							{item.label}
 						</a>
 					{/each}
+					<a
+						href="/categories"
+						class="min-h-[44px] px-3.5 py-2 rounded-md font-bold text-sm transition-all duration-150 flex items-center border-2 {isActive('/categories')
+							? 'bg-brand text-brand-foreground border-border shadow-hard-sm'
+							: 'border-transparent text-content hover:border-border hover:bg-surface-subtle'}"
+					>
+						Kategori
+					</a>
 				</nav>
 
 				<div class="flex items-center gap-2">
 					<a
-						href="/transactions/new"
+						href="/transactions"
 						class="hidden md:inline-flex items-center justify-center min-h-[44px] px-4 py-2 rounded-md border-2 border-border bg-accent text-neutral-900 font-bold text-sm shadow-hard-sm hover:brightness-95 active:translate-x-[2px] active:translate-y-[2px] active:shadow-none transition-all duration-150"
 					>
 						+ Transaksi
@@ -123,7 +131,7 @@
 				<!-- Item 3: Center FAB (+) Button -->
 				<div class="flex items-center justify-center">
 					<a
-						href="/transactions/new"
+						href="/transactions"
 						class="w-12 h-12 rounded-full border-2 border-border bg-accent text-neutral-900 flex items-center justify-center shadow-hard-sm active:translate-x-[2px] active:translate-y-[2px] active:shadow-none transition-all duration-150 focus-visible:outline-2 focus-visible:outline-offset-2"
 						aria-label="Tambah Transaksi Baru"
 					>

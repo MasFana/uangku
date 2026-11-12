@@ -1,35 +1,27 @@
 <script lang="ts">
-	import Card from '../lib/components/Card.svelte';
-	import Button from '../lib/components/Button.svelte';
-	import Badge from '../lib/components/Badge.svelte';
-	import EmptyState from '../lib/components/EmptyState.svelte';
-	import { formatRupiah, formatDateIndo } from '../lib/utils';
+	import Card from '$lib/components/Card.svelte';
+	import Button from '$lib/components/Button.svelte';
+	import Badge from '$lib/components/Badge.svelte';
+	import EmptyState from '$lib/components/EmptyState.svelte';
+	import CashflowChart from '$lib/components/CashflowChart.svelte';
+	import { formatRupiah, formatDateIndo } from '$lib/utils';
+	import type { PageData } from './$types';
 
-	// Initial reactive state: starts at 0 for fresh user
-	let totalSaldo = $state(0);
-	let totalIncome = $state(0);
-	let totalExpense = $state(0);
+	let { data }: { data: PageData } = $props();
 
-	// Empty array by default (in production, users start from scratch)
-	interface WalletItem {
-		id: string;
-		name: string;
-		type: string;
-		balance: number;
-	}
+	const summary = $derived(data.summary);
+	const wallets = $derived(data.wallets ?? []);
+	const hasWallets = $derived(wallets.length > 0);
+	const hasTransactions = $derived(summary.recentTransactions && summary.recentTransactions.length > 0);
+	const hasBreakdown = $derived(summary.categoryBreakdown && summary.categoryBreakdown.length > 0);
 
-	interface TransactionItem {
-		id: string;
-		title: string;
-		category: string;
-		amount: number;
-		type: 'income' | 'expense' | 'transfer';
-		date: string;
-		walletName: string;
-	}
+	const totalExpense = $derived(
+		summary.categoryBreakdown.reduce((sum, c) => sum + c.total, 0)
+	);
 
-	let wallets = $state<WalletItem[]>([]);
-	let recentTransactions = $state<TransactionItem[]>([]);
+	const walletMap = $derived(
+		new Map(wallets.map((w) => [w.id, w.name]))
+	);
 </script>
 
 <svelte:head>
@@ -45,12 +37,12 @@
 					Total Saldo Bersih
 				</p>
 				<h1 class="text-3xl sm:text-4xl font-black font-mono tracking-tight tabular-nums text-neutral-900">
-					{formatRupiah(totalSaldo)}
+					{formatRupiah(summary.totalBalance ?? 0)}
 				</h1>
 			</div>
 			<div class="flex items-center gap-2">
 				<a
-					href="/transactions/new"
+					href="/transactions"
 					class="inline-flex items-center justify-center min-h-[44px] px-4 py-2.5 rounded-md border-2 border-border bg-surface text-content font-bold text-sm shadow-hard-sm hover:bg-surface-subtle active:translate-x-[2px] active:translate-y-[2px] active:shadow-none transition-all duration-150"
 				>
 					+ Transaksi Baru
@@ -58,99 +50,160 @@
 			</div>
 		</div>
 
-		<!-- Income & Expense Summary Columns -->
+		<!-- Monthly Cashflow -->
 		<div class="grid grid-cols-2 gap-3 mt-6 pt-5 border-t-2 border-border/20">
 			<div>
 				<p class="text-xs font-bold text-neutral-900/80 mb-0.5">Pemasukan Bulan Ini</p>
 				<p class="text-lg sm:text-xl font-bold font-mono tabular-nums text-neutral-900">
-					+{formatRupiah(totalIncome)}
+					+{formatRupiah(summary.currentMonth?.income ?? 0)}
 				</p>
 			</div>
 			<div>
 				<p class="text-xs font-bold text-neutral-900/80 mb-0.5">Pengeluaran Bulan Ini</p>
 				<p class="text-lg sm:text-xl font-bold font-mono tabular-nums text-neutral-900">
-					-{formatRupiah(totalExpense)}
+					-{formatRupiah(summary.currentMonth?.expense ?? 0)}
 				</p>
 			</div>
 		</div>
 	</Card>
 
-	<!-- Dompet Saya -->
-	<section aria-labelledby="heading-wallets" class="space-y-3">
-		<div class="flex items-center justify-between">
-			<h2 id="heading-wallets" class="text-lg font-black tracking-tight text-content">
-				Dompet Saya
-			</h2>
-			<a
-				href="/wallets/new"
-				class="text-xs font-bold text-content hover:underline inline-flex items-center min-h-[44px] px-2"
-			>
-				+ Tambah Dompet
-			</a>
+	<!-- Grafik Tren 6 Bulan (Custom SVG) -->
+	<Card class="p-6">
+		<div class="flex items-center justify-between mb-4">
+			<div>
+				<h2 class="text-base font-black text-content tracking-tight">Tren Arus Kas 6 Bulan</h2>
+				<p class="text-xs font-semibold text-content-muted">Perbandingan rasio pemasukan vs pengeluaran</p>
+			</div>
 		</div>
 
-		{#if wallets.length === 0}
-			<EmptyState
-				title="Belum ada dompet"
-				description="Tambahkan rekening bank, dompet digital, atau uang tunai untuk mulai mengelola saldo."
-				actionLabel="+ Buat Dompet Pertama"
-				actionHref="/wallets/new"
-			/>
-		{:else}
-			<div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
-				{#each wallets as wallet}
-					<div class="p-4 rounded-lg border-2 border-border bg-surface shadow-hard-sm flex items-center justify-between">
-						<div>
-							<p class="text-sm font-bold text-content">{wallet.name}</p>
-							<span class="text-xs text-content-muted capitalize">{wallet.type}</span>
-						</div>
-						<p class="text-base font-bold font-mono tabular-nums text-content">
-							{formatRupiah(wallet.balance)}
-						</p>
-					</div>
-				{/each}
-			</div>
-		{/if}
-	</section>
+		<CashflowChart data={summary.sixMonthTrend ?? []} height={180} />
+	</Card>
 
-	<!-- Transaksi Terakhir -->
-	<section aria-labelledby="heading-transactions" class="space-y-3">
+	<div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+		<!-- Dompet Saya -->
+		<div class="lg:col-span-1 space-y-3">
+			<div class="flex items-center justify-between">
+				<h2 class="text-base font-black tracking-tight text-content">
+					Dompet ({wallets.length})
+				</h2>
+				<a
+					href="/wallets"
+					class="text-xs font-bold text-content hover:underline inline-flex items-center min-h-[44px] px-2"
+				>
+					Kelola
+				</a>
+			</div>
+
+			{#if !hasWallets}
+				<EmptyState
+					title="Belum ada dompet"
+					description="Tambahkan dompet pertama untuk mulai mengelola saldo."
+					actionLabel="+ Buat Dompet"
+					actionHref="/wallets"
+				/>
+			{:else}
+				<div class="space-y-2">
+					{#each wallets as wallet}
+						<div class="p-3.5 rounded-lg border-2 border-border bg-surface shadow-hard-xs flex items-center justify-between">
+							<div>
+								<p class="text-sm font-bold text-content">{wallet.name}</p>
+								<span class="text-xs text-content-muted capitalize">{wallet.type}</span>
+							</div>
+							<p class="text-sm font-bold font-mono tabular-nums text-content">
+								{formatRupiah(wallet.balance ?? 0)}
+							</p>
+						</div>
+					{/each}
+				</div>
+			{/if}
+		</div>
+
+		<!-- Breakdown Kategori Pengeluaran -->
+		<div class="lg:col-span-2 space-y-3">
+			<div class="flex items-center justify-between">
+				<h2 class="text-base font-black tracking-tight text-content">
+					Pengeluaran per Kategori
+				</h2>
+				<a
+					href="/categories"
+					class="text-xs font-bold text-content hover:underline inline-flex items-center min-h-[44px] px-2"
+				>
+					Lihat Kategori
+				</a>
+			</div>
+
+			{#if !hasBreakdown}
+				<EmptyState
+					title="Belum ada pengeluaran"
+					description="Catat pengeluaran bulan ini untuk melihat komposisi belanja Anda."
+					actionLabel="+ Catat Transaksi"
+					actionHref="/transactions"
+				/>
+			{:else}
+				<Card class="p-4 space-y-3">
+					{#each summary.categoryBreakdown as cat}
+						{@const percentage = totalExpense > 0 ? Math.round((cat.total / totalExpense) * 100) : 0}
+						<div class="space-y-1">
+							<div class="flex items-center justify-between text-xs font-bold">
+								<span class="text-content truncate">{cat.categoryName}</span>
+								<span class="font-mono tabular-nums text-content">
+									{formatRupiah(cat.total)} ({percentage}%)
+								</span>
+							</div>
+							<!-- Progress bar brutalist -->
+							<div class="w-full h-2.5 rounded-full border border-border bg-surface-subtle overflow-hidden">
+								<div
+									class="h-full bg-expense"
+									style="width: {Math.min(percentage, 100)}%;"
+								></div>
+							</div>
+						</div>
+					{/each}
+				</Card>
+			{/if}
+		</div>
+	</div>
+
+	<!-- 10 Transaksi Terakhir -->
+	<section aria-labelledby="heading-dashboard-tx" class="space-y-3">
 		<div class="flex items-center justify-between">
-			<h2 id="heading-transactions" class="text-lg font-black tracking-tight text-content">
+			<h2 id="heading-dashboard-tx" class="text-lg font-black tracking-tight text-content">
 				Transaksi Terakhir
 			</h2>
-			{#if recentTransactions.length > 0}
+			{#if hasTransactions}
 				<a
 					href="/transactions"
 					class="text-xs font-bold text-content hover:underline inline-flex items-center min-h-[44px] px-2"
 				>
-					Lihat Semua
+					Lihat Semua Transaksi →
 				</a>
 			{/if}
 		</div>
 
-		{#if recentTransactions.length === 0}
+		{#if !hasTransactions}
 			<EmptyState
 				title="Belum ada transaksi"
 				description="Catat pengeluaran harian atau pemasukan Anda agar kondisi finansial tetap terpantau rapi."
-				actionLabel="+ Catat Transaksi"
-				actionHref="/transactions/new"
+				actionLabel="+ Catat Transaksi Baru"
+				actionHref="/transactions"
 			/>
 		{:else}
 			<div class="space-y-2">
-				{#each recentTransactions as tx}
-					<div class="p-3.5 rounded-lg border-2 border-border bg-surface shadow-hard-sm flex items-center justify-between gap-3">
+				{#each summary.recentTransactions as tx}
+					<div class="p-3.5 rounded-lg border-2 border-border bg-surface shadow-hard-xs flex items-center justify-between gap-3">
 						<div class="min-w-0 flex-1">
 							<div class="flex items-center gap-2 mb-1">
-								<Badge variant={tx.type}>{tx.category}</Badge>
-								<span class="text-xs text-content-muted">{formatDateIndo(tx.date)}</span>
+								<Badge variant={tx.type === 'income' ? 'income' : tx.type === 'expense' ? 'expense' : 'neutral'}>
+									{tx.type === 'income' ? 'Pemasukan' : tx.type === 'expense' ? 'Pengeluaran' : 'Transfer'}
+								</Badge>
+								<span class="text-xs text-content-muted">{formatDateIndo(tx.occurredAt)}</span>
 							</div>
-							<p class="text-sm font-bold text-content truncate">{tx.title}</p>
-							<p class="text-xs text-content-muted">{tx.walletName}</p>
+							<p class="text-sm font-bold text-content truncate">{tx.note || 'Transaksi'}</p>
+							<p class="text-xs text-content-muted">{walletMap.get(tx.walletId) || 'Dompet'}</p>
 						</div>
 						<div class="text-right shrink-0">
-							<p class="text-base font-bold font-mono tabular-nums {tx.type === 'income' ? 'text-income' : 'text-expense'}">
-								{tx.type === 'income' ? '+' : '-'}{formatRupiah(tx.amount)}
+							<p class="text-base font-bold font-mono tabular-nums {tx.type === 'income' ? 'text-income' : tx.type === 'expense' ? 'text-expense' : 'text-content'}">
+								{tx.type === 'income' ? '+' : tx.type === 'expense' ? '-' : ''}{formatRupiah(tx.amount)}
 							</p>
 						</div>
 					</div>

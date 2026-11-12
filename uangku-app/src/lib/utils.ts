@@ -1,4 +1,12 @@
 import { type ClassValue, clsx } from 'clsx';
+import { twMerge } from 'tailwind-merge';
+
+export type WithElementRef<T, E extends HTMLElement = HTMLElement> = T & {
+	ref?: E | null;
+};
+
+export type WithoutChildrenOrChild<T> = Omit<T, 'children' | 'child'>;
+export type WithoutChild<T> = Omit<T, 'child'>;
 
 /**
  * Format integer amount to Indonesian Rupiah without decimals.
@@ -26,8 +34,8 @@ export function formatDateIndo(dateStr: string | Date): string {
 }
 
 /**
- * Lightweight class name merger using clsx.
+ * Class name merger combining clsx and tailwind-merge.
  */
 export function cn(...inputs: ClassValue[]): string {
-	return clsx(inputs);
+	return twMerge(clsx(inputs));
 }

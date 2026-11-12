@@ -3,6 +3,9 @@
 	import Input from '../../lib/components/Input.svelte';
 	import Button from '../../lib/components/Button.svelte';
 	import Logo from '../../lib/components/Logo.svelte';
+	import type { PageData } from './$types';
+
+	let { data }: { data: PageData } = $props();
 
 	let email = $state('');
 	let password = $state('');
@@ -58,8 +61,11 @@
 				return;
 			}
 
-			// Login success -> redirect to dashboard
-			window.location.href = '/';
+			// Login success -> redirect to safe destination
+			const dest = data.redirectTo && data.redirectTo.startsWith('/') && !data.redirectTo.startsWith('//') && !data.redirectTo.startsWith('/\\')
+				? data.redirectTo
+				: '/';
+			window.location.href = dest;
 		} catch (err) {
 			errorMessage = 'Koneksi ke server gagal. Periksa sambungan internet Anda.';
 			loading = false;
