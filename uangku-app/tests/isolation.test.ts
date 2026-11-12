@@ -151,18 +151,70 @@ describe('Tenant Isolation Tests (D1 Integration)', () => {
 		const bobFetch = await transactionsRepo.getById(userB, aliceTx.id);
 		expect(bobFetch).toBeNull();
 
-		// Bob cannot update Alice's transaction
-		const bobUpdate = await transactionsRepo.update(userB, aliceTx.id, { amount: 10_000 });
+		// Bob cannot update Alice's transaction (returns null, Alice's data unchanged)
+		const bobUpdate = await transactionsRepo.update(userB, aliceTx.id, { amount: 10_000, note: 'Hacked note' });
 		expect(bobUpdate).toBeNull();
 
-		// Bob cannot delete Alice's transaction
+		// Bob cannot delete Alice's transaction (returns false, Alice's data intact)
 		const bobDelete = await transactionsRepo.delete(userB, aliceTx.id);
 		expect(bobDelete).toBe(false);
 
-		// Verify Alice's transaction still intact
+		// Verify Alice's transaction still intact after unauthorized update & delete attempts
 		const aliceFetch = await transactionsRepo.getById(userA, aliceTx.id);
 		expect(aliceFetch).not.toBeNull();
 		expect(aliceFetch?.amount).toBe(50_000);
+		expect(aliceFetch?.note).toBe('Coffee');
+	});
+
+	it('strictly isolates wallet mutation and archiving between users', async () => {
+		const aliceWallet = await walletsRepo.create(userA, {
+			name: 'Alice Vault',
+			type: 'bank',
+			initialBalance: 2_500_000
+		});
+
+		// Bob attempts to update Alice's wallet
+		const bobUpdate = await walletsRepo.update(userB, aliceWallet.id, {
+			name: 'Bob Hijacked Vault'
+		});
+		expect(bobUpdate).toBeNull();
+
+		// Bob attempts to archive Alice's wallet
+		const bobArchive = await walletsRepo.archive(userB, aliceWallet.id);
+		expect(bobArchive).toBe(false);
+
+		// Verify Alice's wallet data remains original and active
+		const aliceWalletCheck = await walletsRepo.getById(userA, aliceWallet.id);
+		expect(aliceWalletCheck).not.toBeNull();
+		expect(aliceWalletCheck?.name).toBe('Alice Vault');
+		expect(aliceWalletCheck?.archived).toBe(false);
+	});
+
+	it('strictly isolates category mutation and archiving between users', async () => {
+		const aliceCat = await categoriesRepo.create(userA, {
+			name: 'Alice Investment',
+			kind: 'expense'
+		});
+
+		// Bob attempts to update Alice's category
+		const bobUpdate = await categoriesRepo.update(userB, aliceCat.id, {
+			name: 'Bob Hijacked Category'
+		});
+		expect(bobUpdate).toBeNull();
+
+		// Bob attempts to archive Alice's category
+		const bobArchive = await categoriesRepo.archive(userB, aliceCat.id);
+		expect(bobArchive).toBe(false);
+
+		// Bob attempts to unarchive Alice's category
+		const bobUnarchive = await categoriesRepo.unarchive(userB, aliceCat.id);
+		expect(bobUnarchive).toBe(false);
+
+		// Verify Alice's category remains original and active
+		const aliceCatCheck = await categoriesRepo.getById(userA, aliceCat.id);
+		expect(aliceCatCheck).not.toBeNull();
+		expect(aliceCatCheck?.name).toBe('Alice Investment');
+		expect(aliceCatCheck?.archived).toBe(false);
 	});
 
 	it('prevents cross-user wallet transfers', async () => {

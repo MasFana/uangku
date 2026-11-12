@@ -1,44 +1,59 @@
-# Checklist Penerimaan QA (Acceptance Checklist) — Fase 1 (MVP)
+# Checklist Penerimaan QA (Acceptance Checklist) — Fase 1 (MVP) & Sprint 2
 
-Dokumen ini melacak kriteria penerimaan (acceptance criteria) berdasarkan `docs/specs/fase1-prd.md` §7, kepatuhan NFR, keputusan desain `docs/DECISIONS.md`, dan verifikasi otomatis QA untuk Sprint 1 & Sprint 2.
+Dokumen ini memetakan seluruh kriteria penerimaan berdasarkan `docs/specs/fase1-prd.md` §7, `AGENTS.md`, `DESIGN.md`, dan `docs/DECISIONS.md`. Setiap butir diverifikasi dengan bukti berkas dan baris kode atau nama berkas tes unit/integrasi.
 
 ---
 
-## 1. Kriteria Penerimaan Inti (Fase 1 PRD §7 & Sprint 2)
+## 1. Kriteria Penerimaan Fungsional (PRD §7 & Sprint 2)
 
-| ID | Skenario (Given-When-Then) | Status | Bukti / Catatan Verifikasi |
+| ID | Skenario (Given-When-Then) | Status | Bukti Verifikasi / Alasan Belum Diuji |
 |---|---|---|---|
-| **AC-01** | **Given** 3 dompet **WHEN** dashboard dibuka **THEN** total saldo = akumulasi saldo awal + seluruh mutasi terhitung akurat. | **LULUS (Unit)** | Teruji pada `tests/balance.test.ts` (`calculateMultipleWalletBalances` & `calculateWalletBalance`). |
-| **AC-02** | **Given** transaksi baru **WHEN** dibuat **THEN** cache KV dashboard di-invalidate dan saldo dihitung ulang. | **LULUS (KV Unit)** | Teruji pada `tests/cache.test.ts` via Miniflare KV (TTL 60s & invalidasi mutasi). |
-| **AC-03** | **Given** transfer Rp50.000 A→B **WHEN** dieksekusi **THEN** saldo A -50.000, saldo B +50.000, tercatat 1 baris `type='transfer'` dengan `transfer_wallet_id`. | **LULUS (Repo)** | Teruji pada `tests/balance.test.ts` dan `tests/isolation.test.ts`. |
-| **AC-04** | **Given** export transaksi **WHEN** diunduh **THEN** file CSV valid dengan escaping karakter khusus (koma, tanda kutip, newline). | **TERTUNDA** | Menunggu implementasi streaming export (F9). |
-| **AC-05** | **Given** mutasi saldo bervariasi (income, expense, transfer) **WHEN** diuji **THEN** seluruh kalkulasi matematika saldo dan arus kas lulus pengujian unit. | **LULUS** | 11 pengujian di `tests/balance.test.ts` lulus tanpa toleransi desimal (IDR integer truncation). |
-| **AC-06** | **Given** transaksi difilter (rentang tanggal, dompet, kategori, tipe) **WHEN** query dieksekusi **THEN** data terfilter presisi dan kasus batas (tanggal sama, from > to, kosong) ditangani aman. | **LULUS (D1)** | Teruji pada `tests/transactions-query.test.ts`. |
-| **AC-07** | **Given** pagination transaksi dengan `occurredAt` kembar **WHEN** paginasi bertahap **THEN** urutan `occurred_at DESC, id DESC` stabil, `hasMore`/`nextCursor` valid, tidak ada baris ganda atau terlewat. | **LULUS (D1)** | Teruji pada `tests/transactions-query.test.ts` (kursor komposit `occurredAt\|id`). |
-| **AC-08** | **Given** pengguna belum login membuka rute terproteksi **WHEN** rute diakses **THEN** sistem mengalihkan ke `/login?redirectTo=...` dan kembali ke halaman asal setelah berhasil login. | **LULUS (Guard Unit)** | Teruji pada `tests/guard.test.ts` (`loginRedirectUrl` & `isPublicRoute`). Integrasi flow login menunggu E2E/CI. |
-| **AC-09** | **Given** sesi aktif pengguna **WHEN** tombol logout ditekan **THEN** sesi terhapus dari D1 dan user dialihkan ke `/login`. | **TERTUNDA** | Menunggu aksi logout di shell / settings UI. |
+| **AC-01** | **Given** 3 dompet **WHEN** dashboard dibuka **THEN** total saldo = akumulasi saldo awal + seluruh mutasi terhitung akurat. | **LULUS** | `tests/balance.test.ts:109-170` (`calculateMultipleWalletBalances`), `tests/balance.test.ts:40-108` (`calculateWalletBalance`). |
+| **AC-02** | **Given** transaksi baru **WHEN** dibuat **THEN** cache KV dashboard di-invalidate dan saldo dihitung ulang. | **LULUS** | `tests/cache.test.ts:25-96` (`stores and retrieves dashboard summary`, `invalidates cache on mutation`), `src/lib/server/cache.ts:28-66`. |
+| **AC-03** | **Given** transfer Rp50.000 A→B **WHEN** dieksekusi **THEN** saldo A -50.000, saldo B +50.000, tercatat 1 baris `type='transfer'` dengan `transfer_wallet_id`. | **LULUS** | `tests/balance.test.ts:86-107`, `src/lib/server/repos/transactions.ts:167-210`, `tests/isolation.test.ts:225-245`. |
+| **AC-04** | **Given** export transaksi **WHEN** diunduh **THEN** file CSV valid dengan escaping karakter khusus. | **BELUM DIUJI** | Belum diimplementasikan di kode sumber (`src/routes/**` belum memiliki endpoint streaming export CSV). |
+| **AC-05** | **Given** mutasi saldo bervariasi **WHEN** diuji **THEN** seluruh kalkulasi matematika saldo dan arus kas integer IDR akurat. | **LULUS** | `tests/balance.test.ts:11-205` (11 test case lulus, pembulatan integer rupiah tanpa toleransi float). |
+| **AC-06** | **Given** transaksi difilter (rentang tanggal, dompet, kategori, tipe) **WHEN** query dieksekusi **THEN** data terfilter presisi dan kasus batas ditangani aman. | **LULUS** | `tests/transactions-query.test.ts:89-183` (4 pengujian filtering: dompet, kategori, tipe, rentang tanggal `from > to`). |
+| **AC-07** | **Given** pagination transaksi dengan `occurredAt` kembar **WHEN** paginasi bertahap **THEN** urutan `occurred_at DESC, id DESC` stabil, `hasMore`/`nextCursor` valid, tidak ada baris ganda atau terlewat. | **LULUS** | `tests/transactions-query.test.ts:184-297` (membuat 3 baris bertimestamp persis sama `2026-07-01T12:00:00.000Z`, dipaginasi limit 2 dengan cursor komposit tanpa item lompat/duplikat). |
+| **AC-08** | **Given** pengguna belum login membuka rute terproteksi **WHEN** rute diakses **THEN** sistem mengalihkan ke `/login?redirectTo=...` dan kembali setelah login. | **LULUS (Guard)** | `tests/guard.test.ts:18-87` (`loginRedirectUrl` & `isPublicRoute`). Integrasi browser belum diuji karena `wrangler dev` crash di host Alpine musl (`kj/async.c++:1429 unimplemented: getcontext`). |
+| **AC-09** | **Given** sesi aktif pengguna **WHEN** tombol logout ditekan **THEN** sesi terhapus dari D1 dan user dialihkan ke `/login`. | **BELUM DIUJI** | Tombol/action logout belum tersedia di shell UI dan browser automation belum aktif di host ini (`wrangler dev` unstartable). |
 
 ---
 
-## 2. Kepatuhan UI, Aksesibilitas & NFR (DESIGN.md & DECISIONS.md)
+## 2. Kriteria Penerimaan Isolasi Multi-Tenant
 
-| Area | Kriteria Evaluasi | Status | Bukti / Catatan |
+| ID | Skenario | Status | Bukti Verifikasi |
 |---|---|---|---|
-| **Format Mata Uang Rupiah** | Semua nominal uang di UI wajib tampil dalam format `Rp` tanpa desimal (misal `Rp12.500`, bukan `Rp12.500,00` atau `12500.00`). | **DIVERIFIKASI** | Skema DB dan model mewajibkan integer rupiah. Ditampilkan dengan `tabular-nums`. |
-| **Aksesibilitas Grafik Tren** | Komponen grafik 6 bulan wajib memiliki teks alternatif atau `aria-label`/`aria-describedby` informatif untuk pembaca layar. | **TERTUNDA** | Komponen `CashflowChart.svelte` diverifikasi saat `ui-design` selesai. |
-| **Peredaman Animasi (Reduced Motion)** | Bila browser/OS mengaktifkan `prefers-reduced-motion: reduce`, semua transform spring, scale, dan translate dinonaktifkan (hanya opacity). | **DIVERIFIKASI** | Tertera pada aturan `DESIGN.md` dan `@theme inline` di `src/app.css`. |
-| **Aksesibilitas Kontras & Sentuhan** | Target sentuh tombol/interaktif ≥ 44px, kontras rasio minimal WCAG AA (4.5:1), border tebal 2–3px neo-brutalist. | **DIVERIFIKASI** | Dipindai otomatis via `impeccable detect`. |
-| **Isolasi Multi-Tenant** | Data dompet, kategori, transaksi tidak bocor antar-user, transfer silang akun diblokir. | **LULUS** | Terverifikasi pada `tests/isolation.test.ts` dengan Cloudflare D1. |
-| **Bundle Size Worker** | Ukuran build SSR worker di bawah 30 MB. | **LULUS** | Ukuran bundle SSR ~371 kB uncompressed. |
+| **ISO-01** | User B membaca daftar atau detail dompet User A | **LULUS** | `tests/isolation.test.ts:80-109` (`walletsRepo.list` terfilter, `walletsRepo.getById` menghasilkan `null`). |
+| **ISO-02** | User B mencoba update dompet User A | **LULUS** | `tests/isolation.test.ts:173-193` (menghasilkan `null`, nama dompet Alice tetap utuh `Alice Vault`). |
+| **ISO-03** | User B mencoba archive dompet User A | **LULUS** | `tests/isolation.test.ts:186-193` (menghasilkan `false`, status dompet Alice tetap `archived: false`). |
+| **ISO-04** | User B membaca daftar atau detail kategori User A | **LULUS** | `tests/isolation.test.ts:111-137` (`categoriesRepo.list` terfilter, `categoriesRepo.getById` menghasilkan `null`). |
+| **ISO-05** | User B mencoba update kategori User A | **LULUS** | `tests/isolation.test.ts:195-217` (menghasilkan `null`, nama kategori Alice tetap utuh `Alice Investment`). |
+| **ISO-06** | User B mencoba archive/unarchive kategori User A | **LULUS** | `tests/isolation.test.ts:206-217` (menghasilkan `false`, kategori Alice tetap `archived: false`). |
+| **ISO-07** | User B membaca daftar atau detail transaksi User A | **LULUS** | `tests/isolation.test.ts:139-160` (`transactionsRepo.list` terfilter, `transactionsRepo.getById` menghasilkan `null`). |
+| **ISO-08** | User B mencoba update transaksi User A | **LULUS** | `tests/isolation.test.ts:161-171` (menghasilkan `null`, data `amount` dan `note` Alice tetap utuh). |
+| **ISO-09** | User B mencoba delete transaksi User A | **LULUS** | `tests/isolation.test.ts:165-171` (menghasilkan `false`, transaksi Alice tetap ada di database). |
+| **ISO-10** | User A mencoba transfer ke dompet milik User B | **LULUS** | `tests/isolation.test.ts:225-245` (`transactionsRepo.transfer` menolak dengan error `Target wallet not found`). |
 
 ---
 
-## 3. Validasi Skema Data (Valibot)
+## 3. Kriteria Arsitektur & Batasan Kode (AGENTS.md)
 
-| Skema | Kasus Uji | Status |
+| Aturan Arsitektur | Status | Bukti / Catatan |
 |---|---|---|
-| `CreateWalletSchema` / `UpdateWalletSchema` | Validasi tipe dompet, trimming nama, default saldo 0, tolak float. | **LULUS** (5 kasus uji) |
-| `CreateCategorySchema` / `UpdateCategorySchema` | Validasi tipe, tolak nama kosong/spasi, warna hex opsional. | **LULUS** (3 kasus uji) |
-| `CreateTransactionSchema` / `UpdateTransactionSchema` | Tolak nominal 0/negatif/float, validasi format ISO date. | **LULUS** (4 kasus uji) |
-| `TransferSchema` | Validasi dompet asal & tujuan wajib ada dan berbeda, nominal transfer integer > 0. | **LULUS** (3 kasus uji) |
-| `ListTransactionsQuerySchema` | Limit 1–100, filtering dompet, kategori, jenis transaksi, cursor pagination. | **LULUS** (3 kasus uji) |
+| **Mata Uang Integer Rupiah** | **LULUS** | `src/lib/utils.ts:16-23` (`formatRupiah`), `src/lib/server/db/schema.ts:18,52` (`integer('amount')`, `integer('initial_balance')`). Seluruh mutasi parsed via `parseInt(..., 10)`. |
+| **Larangan Akses Binding Module-Scope** | **LULUS** | `src/lib/server/env.ts:9-52`, `src/hooks.server.ts:12-16`. Binding `APP_DB`, `RECEIPTS`, `CACHE` hanya diakses via `event.platform.env` / `event.locals`. |
+| **Larangan Query DB Langsung di Rute** | **LULUS** | `src/routes/**` memanggil service/repo dari `$lib/server/services/*` dan `$lib/server/repos/*`, tidak mengimpor Drizzle langsung. |
+| **Keamanan SQL (Parameterized Query)** | **LULUS** | Drizzle ORM digunakan untuk seluruh query. Satu-satunya fragmen `sql` ada di `src/lib/server/repos/wallets.ts:73` menggunakan tagged template parameterized. |
+| **Larangan Modul `fs` di Edge Runtime** | **LULUS** | Modul `node:fs` hanya diimpor di `src/lib/server/db/seed.ts:2` (skrip migrasi/seed CLI lokal). Kode runtime app bersih dari `fs`. |
+
+---
+
+## 4. Aksesibilitas, UI & Runtime Checks
+
+| Area | Status | Catatan / Bukti |
+|---|---|---|
+| **Aksesibilitas Target Sentuh & Kontras** | **BELUM DIUJI** | Menunggu penyelesaian commit komponen dialog oleh tim `ui-design` sebelum eksekusi `impeccable detect` dan `scripts/check.sh`. |
+| **Grafik Tren 6 Bulan Text Alternative** | **BELUM DIUJI** | Komponen `CashflowChart.svelte` akan diverifikasi atribut ARIA-nya saat pemeriksaan audit UI tuntas. |
+| **Peredaman Animasi (Reduced Motion)** | **LULUS** | Konfigurasi `@theme` dan aturan CSS neo-brutalist diatur di `src/app.css` & `DESIGN.md`. |
+| **Runtime E2E / In-Browser Acceptance** | **BELUM DIUJI** | `wrangler dev` gagal berjalan pada host Alpine musl akibat `kj/async.c++:1429 unimplemented: getcontext`. Pengujian otomatis mengandalkan Miniflare runtime harness di Vitest. |
