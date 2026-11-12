@@ -1,12 +1,25 @@
-// See https://svelte.dev/docs/kit/types#app.d.ts
-// for information about these interfaces
+import type { AppDatabase } from './lib/server/db/client';
+import type { AuthInstance } from './lib/server/auth';
+
 declare global {
 	namespace App {
 		// interface Error {}
-		// interface Locals {}
+		interface Locals {
+			db?: AppDatabase;
+			r2?: R2Bucket;
+			kv?: KVNamespace;
+			auth?: AuthInstance;
+			user?: AuthInstance['$Infer']['Session']['user'] | null;
+			session?: AuthInstance['$Infer']['Session']['session'] | null;
+		}
 		// interface PageData {}
 		// interface PageState {}
-		// interface Platform {}
+		interface Platform {
+			env: Env;
+			cf?: import('@cloudflare/workers-types').Request['cf'];
+			ctx: ExecutionContext;
+			caches: CacheStorage;
+		}
 	}
 }
 
