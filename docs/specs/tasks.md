@@ -55,3 +55,7 @@ Rencana (disetujui pemilik 2026-11-12): halaman analisis dengan filter + toggle 
 - [ ] A6. Gerbang `scripts/check.sh` di HEAD + verifikasi produksi via curl (sesi nyata) + deploy. Pemilik: orchestrator.
 
 Catatan lingkup: tab harian/mingguan/bulanan TIDAK dipasang di beranda; beranda tetap grafik 6 bulan + tautan ke `/analytics`, supaya kontrol chart hanya ada di satu tempat dan cache KV dashboard (kunci: user) tidak perlu berubah.
+
+## Sprint 3 tambahan (permintaan pemilik)
+- [ ] A7. Perbaikan FAB `+`: tombol di nav bawah dan tombol "+ Transaksi" di header saat ini hanya `<a href="/transactions">` padahal labelnya "Tambah Transaksi Baru". Diarahkan ke `/transactions?new=1`; halaman transaksi membuka modal dari parameter `new` dan membersihkan parameter saat menutup. Pemilik: ui-design.
+- [ ] A8. Kategori bawaan: `DEFAULT_CATEGORIES` (12 pengeluaran + 5 pemasukan, kolom `icon` dibiarkan NULL) + `seedDefaultCategories(event)` yang idempotent per (kind, nama) + action `seedDefaults` + tombol "Isi kategori bawaan" pada keadaan kosong `/categories`. Tidak ada seed otomatis saat daftar. Pemilik: domain-backend (+ tombol oleh ui-design).
