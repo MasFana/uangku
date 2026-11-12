@@ -26,8 +26,9 @@ Larangan visual (dari skill antislop, tetap berlaku): gradien ungu-biru, kartu b
 ## Kode
 | Aspek | Keputusan |
 |---|---|
-| Pola arsitektur | **Berlapis**: `+page.svelte` → Remote Function (`*.remote.ts`) → repository (`src/lib/server/repos/*`) → Drizzle → D1. Route tidak boleh memanggil Drizzle langsung |
-| Validasi | Valibot di semua batas input (form, remote function, query param) |
+| Pola arsitektur | **Berlapis**: `+page.server.ts` (`load` + form actions) → layanan `src/lib/server/services/*` → repository `src/lib/server/repos/*` → Drizzle → D1. Route tidak boleh memanggil Drizzle langsung |
+| Remote functions SvelteKit | **TIDAK dipakai.** Flag `experimental.remoteFunctions` tetap mati. Berkas `*.remote.ts` lama sudah dipindah ke `src/lib/server/services/*.ts` karena namanya menyesatkan |
+| Validasi | Valibot di semua batas input (form action, load, query param) |
 | Uang | Integer rupiah, tanpa float; tampil `Rp12.500` |
 | Auth | Better-Auth + adapter Drizzle D1, sesi di D1 |
 | Binding | `event.platform.env`; tidak pernah di module scope |
