@@ -15,14 +15,14 @@
   --primitive-neutral-950: oklch(0.120 0.025 260);
 
   --primitive-teal-300: oklch(0.820 0.090 165);
-  --primitive-teal-500: oklch(0.650 0.130 165);
+  --primitive-teal-500: oklch(0.500 0.140 165);
   --primitive-teal-700: oklch(0.450 0.120 165);
 
   --primitive-amber-300: oklch(0.860 0.120 85);
   --primitive-amber-500: oklch(0.740 0.140 85);
 
   --primitive-coral-300: oklch(0.780 0.120 25);
-  --primitive-coral-500: oklch(0.620 0.160 25);
+  --primitive-coral-500: oklch(0.520 0.160 25);
   --primitive-coral-700: oklch(0.450 0.140 25);
 
   --primitive-blue-300: oklch(0.820 0.090 240);
@@ -41,17 +41,19 @@
 
   --color-brand: var(--primitive-teal-500);
   --color-brand-hover: var(--primitive-teal-700);
-  --color-brand-foreground: var(--primitive-neutral-900);
+  --color-brand-foreground: var(--primitive-neutral-0);
   --color-accent: var(--primitive-amber-300);
 
   --color-income: var(--primitive-teal-500);
-  --color-income-foreground: var(--primitive-neutral-900);
+  --color-income-foreground: var(--primitive-neutral-0);
   --color-expense: var(--primitive-coral-500);
   --color-expense-foreground: var(--primitive-neutral-0);
   --color-transfer: var(--primitive-blue-500);
   --color-transfer-foreground: var(--primitive-neutral-0);
   --color-warning: var(--primitive-amber-500);
   --color-warning-foreground: var(--primitive-neutral-900);
+  --color-danger: var(--primitive-coral-500);
+  --color-danger-foreground: var(--primitive-neutral-0);
 
   --shadow-hard-sm: 2px 2px 0px 0px var(--color-shadow-solid);
   --shadow-hard: 3px 3px 0px 0px var(--color-shadow-solid);
@@ -83,6 +85,8 @@
   --color-transfer-foreground: var(--primitive-neutral-950);
   --color-warning: var(--primitive-amber-300);
   --color-warning-foreground: var(--primitive-neutral-950);
+  --color-danger: var(--primitive-coral-300);
+  --color-danger-foreground: var(--primitive-neutral-950);
 }
 
 @theme inline {
@@ -112,6 +116,8 @@
   --color-transfer-foreground: var(--color-transfer-foreground);
   --color-warning: var(--color-warning);
   --color-warning-foreground: var(--color-warning-foreground);
+  --color-danger: var(--color-danger);
+  --color-danger-foreground: var(--color-danger-foreground);
 
   --shadow-hard-sm: var(--shadow-hard-sm);
   --shadow-hard: var(--shadow-hard);

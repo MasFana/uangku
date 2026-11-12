@@ -20,7 +20,16 @@
 		ewallet: 'E-Wallet',
 		other: 'Lainnya'
 	};
+
+	function handleKeydown(e: KeyboardEvent) {
+		if (e.key === 'Escape') {
+			showCreateModal = false;
+			editingWallet = null;
+		}
+	}
 </script>
+
+<svelte:window onkeydown={handleKeydown} />
 
 <svelte:head>
 	<title>Kelola Dompet — Uangku</title>
@@ -83,7 +92,7 @@
 										editingWallet = { id: wallet.id, name: wallet.name, type: wallet.type };
 										showCreateModal = false;
 									}}
-									class="px-2.5 py-1 text-xs font-bold rounded border-2 border-border bg-surface hover:bg-surface-subtle active:translate-x-[1px] active:translate-y-[1px] transition-all min-h-[32px]"
+									class="px-3 py-2 text-xs font-bold rounded border-2 border-border bg-surface hover:bg-surface-subtle active:translate-x-[1px] active:translate-y-[1px] transition-all min-h-[44px]"
 								>
 									Edit
 								</button>
@@ -94,7 +103,7 @@
 										onclick={(e) => {
 											if (!confirm(`Arsipkan dompet ${wallet.name}?`)) e.preventDefault();
 										}}
-										class="px-2.5 py-1 text-xs font-bold rounded border-2 border-border bg-surface text-danger hover:bg-danger/10 active:translate-x-[1px] active:translate-y-[1px] transition-all min-h-[32px]"
+										class="px-3 py-2 text-xs font-bold rounded border-2 border-border bg-surface text-danger hover:bg-danger/10 active:translate-x-[1px] active:translate-y-[1px] transition-all min-h-[44px]"
 									>
 										Arsipkan
 									</button>

@@ -29,15 +29,46 @@
 	const bottomPadding = 32;
 	const topPadding = 16;
 	const chartAreaHeight = $derived(svgHeight - bottomPadding - topPadding);
+
+	// Screen reader summary description
+	const chartDescription = $derived.by(() => {
+		if (data.length === 0) return 'Grafik arus kas kosong, belum ada data transaksi.';
+		const firstMonth = data[0].month;
+		const lastMonth = data[data.length - 1].month;
+		const totalInc = data.reduce((sum, d) => sum + d.income, 0);
+		const totalExp = data.reduce((sum, d) => sum + d.expense, 0);
+		return `Grafik arus kas dari bulan ${firstMonth} hingga ${lastMonth}. Total pemasukan ${formatRupiah(totalInc)}, total pengeluaran ${formatRupiah(totalExp)}.`;
+	});
 </script>
 
 <div class="w-full overflow-x-auto">
-	<div class="min-w-[320px] w-full">
+	<div class="w-full">
+		<!-- Accessible summary table for screen readers -->
+		<table class="sr-only">
+			<caption>{chartDescription}</caption>
+			<thead>
+				<tr>
+					<th scope="col">Bulan</th>
+					<th scope="col">Pemasukan</th>
+					<th scope="col">Pengeluaran</th>
+				</tr>
+			</thead>
+			<tbody>
+				{#each data as item}
+					<tr>
+						<td>{item.month}</td>
+						<td>{formatRupiah(item.income)}</td>
+						<td>{formatRupiah(item.expense)}</td>
+					</tr>
+				{/each}
+			</tbody>
+		</table>
+
 		<svg
 			viewBox="0 0 480 {svgHeight}"
 			class="w-full overflow-visible font-sans"
 			role="img"
-			aria-label="Grafik arus kas 6 bulan terakhir"
+			aria-label={chartDescription}
 		>
 			<!-- Baseline zero line -->
 			<line

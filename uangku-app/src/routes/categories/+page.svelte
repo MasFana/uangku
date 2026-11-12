@@ -25,7 +25,16 @@
 		if (activeTab === 'all') return data.categories;
 		return data.categories.filter((c) => c.kind === activeTab);
 	});
+
+	function handleKeydown(e: KeyboardEvent) {
+		if (e.key === 'Escape') {
+			showCreateModal = false;
+			editingCategory = null;
+		}
+	}
 </script>
+
+<svelte:window onkeydown={handleKeydown} />
 
 <svelte:head>
 	<title>Kelola Kategori — Uangku</title>
@@ -60,7 +69,7 @@
 		<button
 			type="button"
 			onclick={() => (activeTab = 'all')}
-			class="px-3.5 py-1.5 rounded-md font-bold text-xs border-2 min-h-[38px] transition-all {activeTab ===
+			class="px-3.5 py-2 rounded-md font-bold text-xs border-2 min-h-[44px] transition-all {activeTab ===
 			'all'
 				? 'bg-content text-canvas border-border shadow-hard-xs'
 				: 'border-border/30 hover:border-border text-content'}"
@@ -70,7 +79,7 @@
 		<button
 			type="button"
 			onclick={() => (activeTab = 'expense')}
-			class="px-3.5 py-1.5 rounded-md font-bold text-xs border-2 min-h-[38px] transition-all {activeTab ===
+			class="px-3.5 py-2 rounded-md font-bold text-xs border-2 min-h-[44px] transition-all {activeTab ===
 			'expense'
 				? 'bg-expense text-white border-border shadow-hard-xs'
 				: 'border-border/30 hover:border-border text-content'}"
@@ -80,7 +89,7 @@
 		<button
 			type="button"
 			onclick={() => (activeTab = 'income')}
-			class="px-3.5 py-1.5 rounded-md font-bold text-xs border-2 min-h-[38px] transition-all {activeTab ===
+			class="px-3.5 py-2 rounded-md font-bold text-xs border-2 min-h-[44px] transition-all {activeTab ===
 			'income'
 				? 'bg-income text-neutral-900 border-border shadow-hard-xs'
 				: 'border-border/30 hover:border-border text-content'}"
@@ -135,7 +144,7 @@
 								};
 								showCreateModal = false;
 							}}
-							class="px-2 py-1 text-xs font-bold rounded border-2 border-border bg-surface hover:bg-surface-subtle transition-all min-h-[32px]"
+							class="px-3 py-2 text-xs font-bold rounded border-2 border-border bg-surface hover:bg-surface-subtle transition-all min-h-[44px]"
 						>
 							Edit
 						</button>
@@ -146,7 +155,7 @@
 								onclick={(e) => {
 									if (!confirm(`Arsipkan kategori ${category.name}?`)) e.preventDefault();
 								}}
-								class="px-2 py-1 text-xs font-bold rounded border-2 border-border bg-surface text-danger hover:bg-danger/10 transition-all min-h-[32px]"
+								class="px-3 py-2 text-xs font-bold rounded border-2 border-border bg-surface text-danger hover:bg-danger/10 transition-all min-h-[44px]"
 							>
 								Arsip
 							</button>

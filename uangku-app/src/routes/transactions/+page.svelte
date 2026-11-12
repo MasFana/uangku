@@ -26,7 +26,16 @@
 	const availableCategories = $derived(
 		(data.categories || []).filter((c) => c.kind === transactionKind)
 	);
+
+	function handleKeydown(e: KeyboardEvent) {
+		if (e.key === 'Escape') {
+			showCreateModal = false;
+			editingTransaction = null;
+		}
+	}
 </script>
+
+<svelte:window onkeydown={handleKeydown} />
 
 <svelte:head>
 	<title>Daftar Transaksi — Uangku</title>
@@ -192,7 +201,7 @@
 									editingTransaction = tx;
 									showCreateModal = false;
 								}}
-								class="px-2 py-1 text-xs font-bold rounded border-2 border-border bg-surface hover:bg-surface-subtle transition-all min-h-[32px]"
+								class="px-3 py-2 text-xs font-bold rounded border-2 border-border bg-surface hover:bg-surface-subtle transition-all min-h-[44px]"
 							>
 								Edit
 							</button>
@@ -203,7 +212,7 @@
 									onclick={(e) => {
 										if (!confirm('Hapus transaksi ini? Saldo dompet akan disesuaikan kembali.')) e.preventDefault();
 									}}
-									class="px-2 py-1 text-xs font-bold rounded border-2 border-border bg-surface text-danger hover:bg-danger/10 transition-all min-h-[32px]"
+									class="px-3 py-2 text-xs font-bold rounded border-2 border-border bg-surface text-danger hover:bg-danger/10 transition-all min-h-[44px]"
 								>
 									Hapus
 								</button>
