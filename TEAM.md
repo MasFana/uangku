@@ -7,6 +7,8 @@ Orchestrator: **Pi** (sesi utama). Semua laporan task ditulis dalam Bahasa Indon
 - Konteks teknis lengkap: `../Cloudflared-Project/00-OVERVIEW.md` + `../Cloudflared-Project/research/01..05`.
 - **Bahasa**: teks UI + commit message Indonesia; nama variabel/fungsi/komentar kode Inggris.
 - **Setor hasil**: commit kecil langsung ke `main` (repo `/home/public/pocket/uangku`), pesan commit `tipe(scope): deskripsi`. Jangan push (tidak ada remote).
+- **Commit SEGERA setelah pekerjaanmu berfungsi.** Jangan pernah meninggalkan pekerjaan selesai sebagai berkas belum ter-commit lalu melanjutkan tugas lain. Ada satu pohon kerja bersama: berkas yang belum di-commit bisa hilang karena aksi role lain (kejadian nyata: 3 berkas uji + 2 perbaikan hilang).
+- **DILARANG di pohon kerja bersama**: `git clean`, `git reset`, `git checkout -- .`, `git restore`, `git stash`, `git checkout <commit>`, atau perintah lain yang menghapus/mengembalikan berkas orang lain. Kalau ragu, tanya orchestrator dulu. Tidak ada jalan pintas untuk membatalkan perubahanmu sendiri selain sunting ulang berkasnya.
 - **Jangan** `wrangler deploy` / `d1 migrations apply --remote` (butuh kredensial; task terpisah bila token tersedia). Lokal OK: `--local`, `vite dev`, `vitest`, `vite build`.
 - **Izin file**: hanya sentuh file milikmu (tabel di bawah). Butuh file orang lain? Kirim pesan ke orchestrator, jangan edit sendiri.
 - `package.json` **hanya** milik Infra. Butuh dependency? Minta lewat orchestrator.

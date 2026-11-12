@@ -50,3 +50,9 @@ Larangan visual (dari skill antislop, tetap berlaku): gradien ungu-biru, kartu b
 - Setiap perintah `wrangler` butuh `LD_PRELOAD=/usr/local/lib/libresinit.so`.
 - **`wrangler dev` tidak dapat dipakai**: setiap permintaan HTTP membuat workerd crash (`unimplemented: getcontext(context)`). Yang jalan: perintah `wrangler d1 ...` dan Miniflare di dalam tes vitest. Uji end-to-end harus lewat CI atau setelah deploy.
 - Detector desain: `/root/.claude/skills/impeccable/scripts/impeccable detect --json src/` (bukan `npx impeccable`).
+
+## Insiden kehilangan pekerjaan (pohon kerja bersama)
+- Kejadian: tiga berkas uji QA (`tests/cache.test.ts`, `tests/guard.test.ts`, `tests/transactions-query.test.ts`), tambahan `docs/qa/checklist.md`, perubahan `vitest.config.ts`, koreksi `/api/auth/` di `guard.ts`, dan alias `$lib` di `vite.config.ts` hilang dari disk. `git reflog` tidak menunjukkan `reset`; polanya cocok dengan `git checkout -- .` dan/atau `git clean -fd`.
+- Akar masalah: pekerjaan yang sudah berfungsi dibiarkan **belum ter-commit** di satu pohon kerja bersama, lalu dihapus oleh perintah pembersihan role lain.
+- Aturan: commit segera setelah pekerjaan berfungsi; dilarang `git clean`/`git reset`/`git checkout`/`git restore`/`git stash` di pohon kerja bersama (lihat `TEAM.md`).
+- Akibat yang harus diingat: setiap laporan "uji lulus" tidak sah lagi setelah berkas ujinya hilang — verifikasi harus diulang setelah berkas ditulis ulang dan di-commit.
