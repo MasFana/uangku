@@ -242,4 +242,34 @@ export class TransactionsRepo {
 
 		return created;
 	}
+
+	/**
+	 * Iterates through all transactions for a user in batches (e.g. 200 items).
+	 * Uses stable cursor (occurredAt, id) desc without loading everything into memory.
+	 */
+	async *iterateAll(
+		userId: string,
+		batchSize = 200
+	): AsyncGenerator<Transaction[], void, unknown> {
+		let cursor: string | undefined = undefined;
+
+		while (true) {
+			const result = await this.list(userId, {
+				cursor,
+				limit: batchSize
+			});
+
+			if (result.items.length === 0) {
+				break;
+			}
+
+			yield result.items;
+
+			if (!result.hasMore || !result.nextCursor) {
+				break;
+			}
+
+			cursor = result.nextCursor;
+		}
+	}
 }
