@@ -73,6 +73,15 @@
 				<span>Kelola Kategori</span>
 				<span class="text-content-muted">→</span>
 			</a>
+
+			<a
+				href="/api/export"
+				download
+				class="p-4 rounded-md border-2 border-border bg-surface hover:bg-surface-subtle font-bold text-sm shadow-hard-xs flex items-center justify-between sm:col-span-2"
+			>
+				<span>Unduh Transaksi (CSV)</span>
+				<span class="text-content-muted">↓</span>
+			</a>
 		</div>
 	</Card>
 

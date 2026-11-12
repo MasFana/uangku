@@ -43,26 +43,31 @@
 
 <div class="w-full overflow-x-auto">
 	<div class="w-full">
-		<!-- Accessible summary table for screen readers -->
-		<table class="sr-only">
-			<caption>{chartDescription}</caption>
-			<thead>
-				<tr>
-					<th scope="col">Bulan</th>
-					<th scope="col">Pemasukan</th>
-					<th scope="col">Pengeluaran</th>
-				</tr>
-			</thead>
-			<tbody>
-				{#each data as item}
+		<!-- Accessible summary table for screen readers.
+		     Pembungkus <div> wajib: `sr-only` pada <table> tidak memotong lebar
+		     (overflow tidak berlaku untuk display:table) sehingga halaman bisa
+		     digeser horizontal ±350px di ponsel. -->
+		<div class="sr-only">
+			<table>
+				<caption>{chartDescription}</caption>
+				<thead>
 					<tr>
-						<td>{item.month}</td>
-						<td>{formatRupiah(item.income)}</td>
-						<td>{formatRupiah(item.expense)}</td>
+						<th scope="col">Bulan</th>
+						<th scope="col">Pemasukan</th>
+						<th scope="col">Pengeluaran</th>
 					</tr>
-				{/each}
-			</tbody>
-		</table>
+				</thead>
+				<tbody>
+					{#each data as item}
+						<tr>
+							<td>{item.month}</td>
+							<td>{formatRupiah(item.income)}</td>
+							<td>{formatRupiah(item.expense)}</td>
+						</tr>
+					{/each}
+				</tbody>
+			</table>
+		</div>
 
 		<svg
 			viewBox="0 0 480 {svgHeight}"

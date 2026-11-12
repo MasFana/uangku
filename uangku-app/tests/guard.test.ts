@@ -71,6 +71,21 @@ describe('Pure Route Guard Logic', () => {
 			};
 			expect(isPublicRequest(req)).toBe(false);
 		});
+
+		it('keeps protecting navigations whose Accept also lists image formats', () => {
+			// Regresi: Chrome/Safari mengirim image/avif + image/webp pada navigasi halaman.
+			const chromeAccept =
+				'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8';
+			const req = {
+				url: { pathname: '/' },
+				request: {
+					headers: {
+						get: (header: string) => (header === 'accept' ? chromeAccept : null)
+					}
+				}
+			};
+			expect(isPublicRequest(req)).toBe(false);
+		});
 	});
 
 	describe('loginRedirectUrl', () => {

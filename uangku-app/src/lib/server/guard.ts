@@ -41,7 +41,9 @@ export function isPublicRequest(event: {
 	}
 
 	const accept = event.request.headers.get('accept');
-	if (accept && accept.includes('image/')) {
+	// Navigasi halaman dari browser juga memuat image/* di Accept (image/avif, image/webp).
+	// Hanya subresource gambar yang TIDAK memuat text/html.
+	if (accept && accept.includes('image/') && !accept.includes('text/html')) {
 		return true;
 	}
 

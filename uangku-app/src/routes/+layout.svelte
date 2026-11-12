@@ -98,25 +98,27 @@
 				<!-- Item 1: Beranda -->
 				<a
 					href="/"
-					class="flex flex-col items-center justify-center min-h-[44px] min-w-[44px] py-1 text-center transition-colors {isActive('/')
+					class="flex flex-col items-center justify-center min-h-[44px] min-w-[44px] py-1 text-center transition-colors active:bg-surface-subtle {isActive('/')
 						? 'text-brand font-extrabold'
 						: 'text-content-muted font-semibold hover:text-content'}"
 					aria-label="Beranda"
+					aria-current={isActive('/') ? 'page' : undefined}
 				>
 					<svg class="w-5 h-5 mb-0.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.25" stroke-linecap="round" stroke-linejoin="round">
 						<path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
 						<polyline points="9 22 9 12 15 12 15 22" />
 					</svg>
-					<span class="text-[10px] leading-tight">Beranda</span>
+					<span class="text-xs leading-tight">Beranda</span>
 				</a>
 
 				<!-- Item 2: Transaksi -->
 				<a
 					href="/transactions"
-					class="flex flex-col items-center justify-center min-h-[44px] min-w-[44px] py-1 text-center transition-colors {isActive('/transactions')
+					class="flex flex-col items-center justify-center min-h-[44px] min-w-[44px] py-1 text-center transition-colors active:bg-surface-subtle {isActive('/transactions')
 						? 'text-brand font-extrabold'
 						: 'text-content-muted font-semibold hover:text-content'}"
 					aria-label="Daftar Transaksi"
+					aria-current={isActive('/transactions') ? 'page' : undefined}
 				>
 					<svg class="w-5 h-5 mb-0.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.25" stroke-linecap="round" stroke-linejoin="round">
 						<path d="M8 3v3a2 2 0 0 1-2 2H3" />
@@ -125,7 +127,7 @@
 						<path d="M12 12v5" />
 						<path d="m9 15 3-3 3 3" />
 					</svg>
-					<span class="text-[10px] leading-tight">Transaksi</span>
+					<span class="text-xs leading-tight">Transaksi</span>
 				</a>
 
 				<!-- Item 3: Center FAB (+) Button -->
@@ -145,32 +147,34 @@
 				<!-- Item 4: Dompet -->
 				<a
 					href="/wallets"
-					class="flex flex-col items-center justify-center min-h-[44px] min-w-[44px] py-1 text-center transition-colors {isActive('/wallets')
+					class="flex flex-col items-center justify-center min-h-[44px] min-w-[44px] py-1 text-center transition-colors active:bg-surface-subtle {isActive('/wallets')
 						? 'text-brand font-extrabold'
 						: 'text-content-muted font-semibold hover:text-content'}"
 					aria-label="Kelola Dompet"
+					aria-current={isActive('/wallets') ? 'page' : undefined}
 				>
 					<svg class="w-5 h-5 mb-0.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.25" stroke-linecap="round" stroke-linejoin="round">
 						<path d="M21 12V7H5a2 2 0 0 1 0-4h14v4" />
 						<path d="M3 5v14a2 2 0 0 0 2 2h16v-5" />
 						<path d="M18 12a2 2 0 0 0 0 4h4v-4Z" />
 					</svg>
-					<span class="text-[10px] leading-tight">Dompet</span>
+					<span class="text-xs leading-tight">Dompet</span>
 				</a>
 
 				<!-- Item 5: Pengaturan -->
 				<a
 					href="/settings"
-					class="flex flex-col items-center justify-center min-h-[44px] min-w-[44px] py-1 text-center transition-colors {isActive('/settings')
+					class="flex flex-col items-center justify-center min-h-[44px] min-w-[44px] py-1 text-center transition-colors active:bg-surface-subtle {isActive('/settings')
 						? 'text-brand font-extrabold'
 						: 'text-content-muted font-semibold hover:text-content'}"
 					aria-label="Pengaturan"
+					aria-current={isActive('/settings') ? 'page' : undefined}
 				>
 					<svg class="w-5 h-5 mb-0.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.25" stroke-linecap="round" stroke-linejoin="round">
 						<circle cx="12" cy="12" r="3" />
 						<path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z" />
 					</svg>
-					<span class="text-[10px] leading-tight">Setelan</span>
+					<span class="text-xs leading-tight">Setelan</span>
 				</a>
 			</div>
 		</nav>

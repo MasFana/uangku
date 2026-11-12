@@ -33,10 +33,10 @@
 	<Card variant="brand" shadow="lg" class="p-6">
 		<div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
 			<div>
-				<p class="text-xs font-bold uppercase tracking-wider text-neutral-900/80 mb-1">
+				<p class="text-xs font-bold uppercase tracking-wider text-brand-foreground/90 mb-1">
 					Total Saldo Bersih
 				</p>
-				<h1 class="text-3xl sm:text-4xl font-black font-mono tracking-tight tabular-nums text-neutral-900">
+				<h1 class="text-3xl sm:text-4xl font-black font-mono tracking-tight tabular-nums text-brand-foreground">
 					{formatRupiah(summary.totalBalance ?? 0)}
 				</h1>
 			</div>
@@ -53,14 +53,14 @@
 		<!-- Monthly Cashflow -->
 		<div class="grid grid-cols-2 gap-3 mt-6 pt-5 border-t-2 border-border/20">
 			<div>
-				<p class="text-xs font-bold text-neutral-900/80 mb-0.5">Pemasukan Bulan Ini</p>
-				<p class="text-lg sm:text-xl font-bold font-mono tabular-nums text-neutral-900">
+				<p class="text-xs font-bold text-brand-foreground/90 mb-0.5">Pemasukan Bulan Ini</p>
+				<p class="text-lg sm:text-xl font-bold font-mono tabular-nums text-brand-foreground">
 					+{formatRupiah(summary.currentMonth?.income ?? 0)}
 				</p>
 			</div>
 			<div>
-				<p class="text-xs font-bold text-neutral-900/80 mb-0.5">Pengeluaran Bulan Ini</p>
-				<p class="text-lg sm:text-xl font-bold font-mono tabular-nums text-neutral-900">
+				<p class="text-xs font-bold text-brand-foreground/90 mb-0.5">Pengeluaran Bulan Ini</p>
+				<p class="text-lg sm:text-xl font-bold font-mono tabular-nums text-brand-foreground">
 					-{formatRupiah(summary.currentMonth?.expense ?? 0)}
 				</p>
 			</div>
