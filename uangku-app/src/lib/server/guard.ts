@@ -20,7 +20,8 @@ export function isPublicRoute(pathname: string): boolean {
 		return true;
 	}
 
-	if (path.startsWith('/api/')) {
+	// Hanya endpoint auth yang publik. Endpoint /api/* lain wajib lewat sesi.
+	if (path === '/api/auth' || path.startsWith('/api/auth/')) {
 		return true;
 	}
 
