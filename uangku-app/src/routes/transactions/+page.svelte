@@ -5,6 +5,7 @@
 	import NumericInput from '$lib/components/NumericInput.svelte';
 	import EmptyState from '$lib/components/EmptyState.svelte';
 	import Badge from '$lib/components/Badge.svelte';
+	import * as Dialog from '$lib/components/ui/dialog/index.js';
 	import { formatRupiah, formatDateIndo } from '$lib/utils';
 	import type { PageData, ActionData } from './$types';
 
@@ -26,16 +27,7 @@
 	const availableCategories = $derived(
 		(data.categories || []).filter((c) => c.kind === transactionKind)
 	);
-
-	function handleKeydown(e: KeyboardEvent) {
-		if (e.key === 'Escape') {
-			showCreateModal = false;
-			editingTransaction = null;
-		}
-	}
 </script>
-
-<svelte:window onkeydown={handleKeydown} />
 
 <svelte:head>
 	<title>Daftar Transaksi — Uangku</title>
@@ -237,177 +229,161 @@
 	{/if}
 
 	<!-- Modal Tambah Transaksi -->
-	{#if showCreateModal}
-		<div class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs">
-			<div class="w-full max-w-lg p-6 rounded-xl border-2 border-border bg-surface shadow-hard-lg space-y-4 max-h-[90vh] overflow-y-auto">
-				<div class="flex items-center justify-between">
-					<h3 class="text-lg font-black text-content">Catat Transaksi Baru</h3>
-					<button
-						type="button"
-						onclick={() => (showCreateModal = false)}
-						class="text-content-muted hover:text-content font-bold text-lg min-h-[44px] min-w-[44px] flex items-center justify-center"
-					>
-						✕
-					</button>
-				</div>
+	<Dialog.Root bind:open={showCreateModal}>
+		<Dialog.Content class="space-y-4 max-h-[90vh] overflow-y-auto sm:max-w-lg">
+			<Dialog.Header>
+				<Dialog.Title class="text-lg font-black text-content">Catat Transaksi Baru</Dialog.Title>
+			</Dialog.Header>
 
-				<!-- Jenis Transaksi Tabs -->
-				<div class="grid grid-cols-3 gap-2">
-					<button
-						type="button"
-						onclick={() => (transactionKind = 'expense')}
-						class="py-2 px-3 text-xs font-bold rounded-md border-2 min-h-[44px] transition-all {transactionKind ===
-						'expense'
-							? 'bg-expense text-white border-border shadow-hard-xs'
-							: 'border-border/30 hover:border-border text-content'}"
-					>
-						Pengeluaran
-					</button>
-					<button
-						type="button"
-						onclick={() => (transactionKind = 'income')}
-						class="py-2 px-3 text-xs font-bold rounded-md border-2 min-h-[44px] transition-all {transactionKind ===
-						'income'
-							? 'bg-income text-neutral-900 border-border shadow-hard-xs'
-							: 'border-border/30 hover:border-border text-content'}"
-					>
-						Pemasukan
-					</button>
-					<button
-						type="button"
-						onclick={() => (transactionKind = 'transfer')}
-						class="py-2 px-3 text-xs font-bold rounded-md border-2 min-h-[44px] transition-all {transactionKind ===
-						'transfer'
-							? 'bg-content text-canvas border-border shadow-hard-xs'
-							: 'border-border/30 hover:border-border text-content'}"
-					>
-						Transfer
-					</button>
-				</div>
+			<!-- Jenis Transaksi Tabs -->
+			<div class="grid grid-cols-3 gap-2">
+				<button
+					type="button"
+					onclick={() => (transactionKind = 'expense')}
+					class="py-2 px-3 text-xs font-bold rounded-md border-2 min-h-[44px] transition-all {transactionKind ===
+					'expense'
+						? 'bg-expense text-white border-border shadow-hard-xs'
+						: 'border-border/30 hover:border-border text-content'}"
+				>
+					Pengeluaran
+				</button>
+				<button
+					type="button"
+					onclick={() => (transactionKind = 'income')}
+					class="py-2 px-3 text-xs font-bold rounded-md border-2 min-h-[44px] transition-all {transactionKind ===
+					'income'
+						? 'bg-income text-white border-border shadow-hard-xs'
+						: 'border-border/30 hover:border-border text-content'}"
+				>
+					Pemasukan
+				</button>
+				<button
+					type="button"
+					onclick={() => (transactionKind = 'transfer')}
+					class="py-2 px-3 text-xs font-bold rounded-md border-2 min-h-[44px] transition-all {transactionKind ===
+					'transfer'
+						? 'bg-content text-canvas border-border shadow-hard-xs'
+						: 'border-border/30 hover:border-border text-content'}"
+				>
+					Transfer
+				</button>
+			</div>
 
-				<form method="POST" action="?/create" class="space-y-4">
-					<input type="hidden" name="formKind" value={transactionKind === 'transfer' ? 'transfer' : 'transaction'} />
-					<input type="hidden" name="type" value={transactionKind} />
+			<form method="POST" action="?/create" class="space-y-4">
+				<input type="hidden" name="formKind" value={transactionKind === 'transfer' ? 'transfer' : 'transaction'} />
+				<input type="hidden" name="type" value={transactionKind} />
 
-					<!-- Nominal dengan live format Rupiah -->
-					<NumericInput
-						name="amount"
-						label="Nominal Transaksi"
-						placeholder="0"
-						required
-					/>
+				<!-- Nominal dengan live format Rupiah -->
+				<NumericInput
+					name="amount"
+					label="Nominal Transaksi"
+					placeholder="0"
+					required
+				/>
 
-					{#if transactionKind === 'transfer'}
-						<div class="space-y-1.5">
-							<label for="from-wallet" class="block text-sm font-bold text-content">Dari Dompet Asal</label>
-							<select
-								id="from-wallet"
-								name="fromWalletId"
-								required
-								class="w-full min-h-[44px] px-3 py-2 text-sm font-bold rounded-md border-2 border-border bg-surface text-content focus:outline-none focus:ring-2 focus:ring-content shadow-hard-xs"
-							>
-								<option value="" disabled selected>Pilih dompet asal...</option>
-								{#each data.wallets || [] as w}
-									<option value={w.id}>{w.name} ({formatRupiah(w.balance)})</option>
-								{/each}
-							</select>
-						</div>
-
-						<div class="space-y-1.5">
-							<label for="to-wallet" class="block text-sm font-bold text-content">Ke Dompet Tujuan</label>
-							<select
-								id="to-wallet"
-								name="toWalletId"
-								required
-								class="w-full min-h-[44px] px-3 py-2 text-sm font-bold rounded-md border-2 border-border bg-surface text-content focus:outline-none focus:ring-2 focus:ring-content shadow-hard-xs"
-							>
-								<option value="" disabled selected>Pilih dompet tujuan...</option>
-								{#each data.wallets || [] as w}
-									<option value={w.id}>{w.name} ({formatRupiah(w.balance)})</option>
-								{/each}
-							</select>
-						</div>
-					{:else}
-						<div class="space-y-1.5">
-							<label for="select-wallet" class="block text-sm font-bold text-content">Pilih Dompet</label>
-							<select
-								id="select-wallet"
-								name="walletId"
-								required
-								class="w-full min-h-[44px] px-3 py-2 text-sm font-bold rounded-md border-2 border-border bg-surface text-content focus:outline-none focus:ring-2 focus:ring-content shadow-hard-xs"
-							>
-								<option value="" disabled selected>Pilih dompet...</option>
-								{#each data.wallets || [] as w}
-									<option value={w.id}>{w.name} ({formatRupiah(w.balance)})</option>
-								{/each}
-							</select>
-						</div>
-
-						<div class="space-y-1.5">
-							<label for="select-category" class="block text-sm font-bold text-content">Kategori</label>
-							<select
-								id="select-category"
-								name="categoryId"
-								required
-								class="w-full min-h-[44px] px-3 py-2 text-sm font-bold rounded-md border-2 border-border bg-surface text-content focus:outline-none focus:ring-2 focus:ring-content shadow-hard-xs"
-							>
-								<option value="" disabled selected>Pilih kategori...</option>
-								{#each availableCategories as c}
-									<option value={c.id}>{c.name}</option>
-								{/each}
-							</select>
-						</div>
-					{/if}
-
+				{#if transactionKind === 'transfer'}
 					<div class="space-y-1.5">
-						<label for="tx-date" class="block text-sm font-bold text-content">Tanggal</label>
-						<input
-							type="date"
-							id="tx-date"
-							name="date"
-							value={new Date().toISOString().slice(0, 10)}
+						<label for="from-wallet" class="block text-sm font-bold text-content">Dari Dompet Asal</label>
+						<select
+							id="from-wallet"
+							name="fromWalletId"
 							required
 							class="w-full min-h-[44px] px-3 py-2 text-sm font-bold rounded-md border-2 border-border bg-surface text-content focus:outline-none focus:ring-2 focus:ring-content shadow-hard-xs"
-						/>
-					</div>
-
-					<Input
-						name="note"
-						label="Catatan (Opsional)"
-						placeholder="Contoh: Makan siang nasi padang"
-					/>
-
-					<div class="flex items-center justify-end gap-2 pt-2">
-						<Button
-							type="button"
-							variant="outline"
-							onclick={() => (showCreateModal = false)}
 						>
-							Batal
-						</Button>
-						<Button type="submit" variant="primary">
-							Simpan Transaksi
-						</Button>
+							<option value="" disabled selected>Pilih dompet asal...</option>
+							{#each data.wallets || [] as w}
+								<option value={w.id}>{w.name} ({formatRupiah(w.balance)})</option>
+							{/each}
+						</select>
 					</div>
-				</form>
-			</div>
-		</div>
-	{/if}
+
+					<div class="space-y-1.5">
+						<label for="to-wallet" class="block text-sm font-bold text-content">Ke Dompet Tujuan</label>
+						<select
+							id="to-wallet"
+							name="toWalletId"
+							required
+							class="w-full min-h-[44px] px-3 py-2 text-sm font-bold rounded-md border-2 border-border bg-surface text-content focus:outline-none focus:ring-2 focus:ring-content shadow-hard-xs"
+						>
+							<option value="" disabled selected>Pilih dompet tujuan...</option>
+							{#each data.wallets || [] as w}
+								<option value={w.id}>{w.name} ({formatRupiah(w.balance)})</option>
+							{/each}
+						</select>
+					</div>
+				{:else}
+					<div class="space-y-1.5">
+						<label for="select-wallet" class="block text-sm font-bold text-content">Pilih Dompet</label>
+						<select
+							id="select-wallet"
+							name="walletId"
+							required
+							class="w-full min-h-[44px] px-3 py-2 text-sm font-bold rounded-md border-2 border-border bg-surface text-content focus:outline-none focus:ring-2 focus:ring-content shadow-hard-xs"
+						>
+							<option value="" disabled selected>Pilih dompet...</option>
+							{#each data.wallets || [] as w}
+								<option value={w.id}>{w.name} ({formatRupiah(w.balance)})</option>
+							{/each}
+						</select>
+					</div>
+
+					<div class="space-y-1.5">
+						<label for="select-category" class="block text-sm font-bold text-content">Kategori</label>
+						<select
+							id="select-category"
+							name="categoryId"
+							required
+							class="w-full min-h-[44px] px-3 py-2 text-sm font-bold rounded-md border-2 border-border bg-surface text-content focus:outline-none focus:ring-2 focus:ring-content shadow-hard-xs"
+						>
+							<option value="" disabled selected>Pilih kategori...</option>
+							{#each availableCategories as c}
+								<option value={c.id}>{c.name}</option>
+							{/each}
+						</select>
+					</div>
+				{/if}
+
+				<div class="space-y-1.5">
+					<label for="tx-date" class="block text-sm font-bold text-content">Tanggal</label>
+					<input
+						type="date"
+						id="tx-date"
+						name="date"
+						value={new Date().toISOString().slice(0, 10)}
+						required
+						class="w-full min-h-[44px] px-3 py-2 text-sm font-bold rounded-md border-2 border-border bg-surface text-content focus:outline-none focus:ring-2 focus:ring-content shadow-hard-xs"
+					/>
+				</div>
+
+				<Input
+					name="note"
+					label="Catatan (Opsional)"
+					placeholder="Contoh: Makan siang nasi padang"
+				/>
+
+				<div class="flex items-center justify-end gap-2 pt-2">
+					<Button
+						type="button"
+						variant="outline"
+						onclick={() => (showCreateModal = false)}
+					>
+						Batal
+					</Button>
+					<Button type="submit" variant="primary">
+						Simpan Transaksi
+					</Button>
+				</div>
+			</form>
+		</Dialog.Content>
+	</Dialog.Root>
 
 	<!-- Modal Edit Transaksi -->
-	{#if editingTransaction}
-		<div class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs">
-			<div class="w-full max-w-lg p-6 rounded-xl border-2 border-border bg-surface shadow-hard-lg space-y-4 max-h-[90vh] overflow-y-auto">
-				<div class="flex items-center justify-between">
-					<h3 class="text-lg font-black text-content">Edit Transaksi</h3>
-					<button
-						type="button"
-						onclick={() => (editingTransaction = null)}
-						class="text-content-muted hover:text-content font-bold text-lg min-h-[44px] min-w-[44px] flex items-center justify-center"
-					>
-						✕
-					</button>
-				</div>
+	<Dialog.Root open={editingTransaction !== null} onOpenChange={(open) => { if (!open) editingTransaction = null; }}>
+		<Dialog.Content class="space-y-4 max-h-[90vh] overflow-y-auto sm:max-w-md">
+			{#if editingTransaction}
+				<Dialog.Header>
+					<Dialog.Title class="text-lg font-black text-content">Edit Transaksi</Dialog.Title>
+				</Dialog.Header>
 
 				<form method="POST" action="?/update" class="space-y-4">
 					<input type="hidden" name="id" value={editingTransaction.id} />
@@ -481,7 +457,7 @@
 						</Button>
 					</div>
 				</form>
-			</div>
-		</div>
-	{/if}
+			{/if}
+		</Dialog.Content>
+	</Dialog.Root>
 </div>

@@ -4,6 +4,7 @@
 	import Input from '$lib/components/Input.svelte';
 	import EmptyState from '$lib/components/EmptyState.svelte';
 	import Badge from '$lib/components/Badge.svelte';
+	import * as Dialog from '$lib/components/ui/dialog/index.js';
 	import type { PageData, ActionData } from './$types';
 
 	let { data, form }: { data: PageData; form: ActionData } = $props();
@@ -25,16 +26,7 @@
 		if (activeTab === 'all') return data.categories;
 		return data.categories.filter((c) => c.kind === activeTab);
 	});
-
-	function handleKeydown(e: KeyboardEvent) {
-		if (e.key === 'Escape') {
-			showCreateModal = false;
-			editingCategory = null;
-		}
-	}
 </script>
-
-<svelte:window onkeydown={handleKeydown} />
 
 <svelte:head>
 	<title>Kelola Kategori — Uangku</title>
@@ -167,84 +159,68 @@
 	{/if}
 
 	<!-- Modal Tambah Kategori -->
-	{#if showCreateModal}
-		<div class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs">
-			<div class="w-full max-w-md p-6 rounded-xl border-2 border-border bg-surface shadow-hard-lg space-y-4">
-				<div class="flex items-center justify-between">
-					<h3 class="text-lg font-black text-content">Tambah Kategori Baru</h3>
-					<button
-						type="button"
-						onclick={() => (showCreateModal = false)}
-						class="text-content-muted hover:text-content font-bold text-lg min-h-[44px] min-w-[44px] flex items-center justify-center"
+	<Dialog.Root bind:open={showCreateModal}>
+		<Dialog.Content class="space-y-4">
+			<Dialog.Header>
+				<Dialog.Title class="text-lg font-black text-content">Tambah Kategori Baru</Dialog.Title>
+			</Dialog.Header>
+
+			<form method="POST" action="?/create" class="space-y-4">
+				<Input
+					name="name"
+					label="Nama Kategori"
+					placeholder="Contoh: Makanan & Minuman, Gaji Bulanan"
+					required
+				/>
+
+				<div class="space-y-1.5">
+					<label for="create-cat-kind" class="block text-sm font-bold text-content">Jenis Kategori</label>
+					<select
+						id="create-cat-kind"
+						name="kind"
+						class="w-full min-h-[44px] px-3 py-2 text-sm font-bold rounded-md border-2 border-border bg-surface text-content focus:outline-none focus:ring-2 focus:ring-content shadow-hard-xs"
 					>
-						✕
-					</button>
+						<option value="expense">Pengeluaran</option>
+						<option value="income">Pemasukan</option>
+					</select>
 				</div>
 
-				<form method="POST" action="?/create" class="space-y-4">
-					<Input
-						name="name"
-						label="Nama Kategori"
-						placeholder="Contoh: Makanan & Minuman, Gaji Bulanan"
-						required
+				<div class="space-y-1.5">
+					<label for="create-cat-color" class="block text-sm font-bold text-content">Warna Penanda</label>
+					<input
+						type="color"
+						id="create-cat-color"
+						name="color"
+						value="#22c55e"
+						class="w-full h-10 rounded border-2 border-border cursor-pointer bg-surface p-1"
 					/>
+				</div>
 
-					<div class="space-y-1.5">
-						<label for="create-cat-kind" class="block text-sm font-bold text-content">Jenis Kategori</label>
-						<select
-							id="create-cat-kind"
-							name="kind"
-							class="w-full min-h-[44px] px-3 py-2 text-sm font-bold rounded-md border-2 border-border bg-surface text-content focus:outline-none focus:ring-2 focus:ring-content shadow-hard-xs"
-						>
-							<option value="expense">Pengeluaran</option>
-							<option value="income">Pemasukan</option>
-						</select>
-					</div>
+				<input type="hidden" name="icon" value="tag" />
 
-					<div class="space-y-1.5">
-						<label for="create-cat-color" class="block text-sm font-bold text-content">Warna Penanda</label>
-						<input
-							type="color"
-							id="create-cat-color"
-							name="color"
-							value="#22c55e"
-							class="w-full h-10 rounded border-2 border-border cursor-pointer bg-surface p-1"
-						/>
-					</div>
-
-					<input type="hidden" name="icon" value="tag" />
-
-					<div class="flex items-center justify-end gap-2 pt-2">
-						<Button
-							type="button"
-							variant="outline"
-							onclick={() => (showCreateModal = false)}
-						>
-							Batal
-						</Button>
-						<Button type="submit" variant="primary">
-							Simpan Kategori
-						</Button>
-					</div>
-				</form>
-			</div>
-		</div>
-	{/if}
+				<div class="flex items-center justify-end gap-2 pt-2">
+					<Button
+						type="button"
+						variant="outline"
+						onclick={() => (showCreateModal = false)}
+					>
+						Batal
+					</Button>
+					<Button type="submit" variant="primary">
+						Simpan Kategori
+					</Button>
+				</div>
+			</form>
+		</Dialog.Content>
+	</Dialog.Root>
 
 	<!-- Modal Edit Kategori -->
-	{#if editingCategory}
-		<div class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs">
-			<div class="w-full max-w-md p-6 rounded-xl border-2 border-border bg-surface shadow-hard-lg space-y-4">
-				<div class="flex items-center justify-between">
-					<h3 class="text-lg font-black text-content">Edit Kategori</h3>
-					<button
-						type="button"
-						onclick={() => (editingCategory = null)}
-						class="text-content-muted hover:text-content font-bold text-lg min-h-[44px] min-w-[44px] flex items-center justify-center"
-					>
-						✕
-					</button>
-				</div>
+	<Dialog.Root open={editingCategory !== null} onOpenChange={(open) => { if (!open) editingCategory = null; }}>
+		<Dialog.Content class="space-y-4">
+			{#if editingCategory}
+				<Dialog.Header>
+					<Dialog.Title class="text-lg font-black text-content">Edit Kategori</Dialog.Title>
+				</Dialog.Header>
 
 				<form method="POST" action="?/update" class="space-y-4">
 					<input type="hidden" name="id" value={editingCategory.id} />
@@ -295,7 +271,7 @@
 						</Button>
 					</div>
 				</form>
-			</div>
-		</div>
-	{/if}
+			{/if}
+		</Dialog.Content>
+	</Dialog.Root>
 </div>

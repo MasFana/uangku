@@ -5,6 +5,7 @@
 	import NumericInput from '$lib/components/NumericInput.svelte';
 	import EmptyState from '$lib/components/EmptyState.svelte';
 	import Badge from '$lib/components/Badge.svelte';
+	import * as Dialog from '$lib/components/ui/dialog/index.js';
 	import { formatRupiah } from '$lib/utils';
 	import type { PageData, ActionData } from './$types';
 
@@ -20,16 +21,7 @@
 		ewallet: 'E-Wallet',
 		other: 'Lainnya'
 	};
-
-	function handleKeydown(e: KeyboardEvent) {
-		if (e.key === 'Escape') {
-			showCreateModal = false;
-			editingWallet = null;
-		}
-	}
 </script>
-
-<svelte:window onkeydown={handleKeydown} />
 
 <svelte:head>
 	<title>Kelola Dompet — Uangku</title>
@@ -126,79 +118,63 @@
 	{/if}
 
 	<!-- Modal Tambah Dompet -->
-	{#if showCreateModal}
-		<div class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs">
-			<div class="w-full max-w-md p-6 rounded-xl border-2 border-border bg-surface shadow-hard-lg space-y-4">
-				<div class="flex items-center justify-between">
-					<h3 class="text-lg font-black text-content">Tambah Dompet Baru</h3>
-					<button
-						type="button"
-						onclick={() => (showCreateModal = false)}
-						class="text-content-muted hover:text-content font-bold text-lg min-h-[44px] min-w-[44px] flex items-center justify-center"
+	<Dialog.Root bind:open={showCreateModal}>
+		<Dialog.Content class="space-y-4">
+			<Dialog.Header>
+				<Dialog.Title class="text-lg font-black text-content">Tambah Dompet Baru</Dialog.Title>
+			</Dialog.Header>
+
+			<form method="POST" action="?/create" class="space-y-4">
+				<Input
+					name="name"
+					label="Nama Dompet"
+					placeholder="Contoh: Rekening BCA, Dompet Tunai"
+					required
+				/>
+
+				<div class="space-y-1.5">
+					<label for="create-wallet-type" class="block text-sm font-bold text-content">Tipe Dompet</label>
+					<select
+						id="create-wallet-type"
+						name="type"
+						class="w-full min-h-[44px] px-3 py-2 text-sm font-bold rounded-md border-2 border-border bg-surface text-content focus:outline-none focus:ring-2 focus:ring-content shadow-hard-xs"
 					>
-						✕
-					</button>
+						<option value="cash">Tunai (Cash)</option>
+						<option value="bank">Rekening Bank</option>
+						<option value="ewallet">E-Wallet (GoPay, OVO, dll)</option>
+						<option value="other">Lainnya</option>
+					</select>
 				</div>
 
-				<form method="POST" action="?/create" class="space-y-4">
-					<Input
-						name="name"
-						label="Nama Dompet"
-						placeholder="Contoh: Rekening BCA, Dompet Tunai"
-						required
-					/>
+				<NumericInput
+					name="initialBalance"
+					label="Saldo Awal"
+					placeholder="0"
+				/>
 
-					<div class="space-y-1.5">
-						<label for="create-wallet-type" class="block text-sm font-bold text-content">Tipe Dompet</label>
-						<select
-							id="create-wallet-type"
-							name="type"
-							class="w-full min-h-[44px] px-3 py-2 text-sm font-bold rounded-md border-2 border-border bg-surface text-content focus:outline-none focus:ring-2 focus:ring-content shadow-hard-xs"
-						>
-							<option value="cash">Tunai (Cash)</option>
-							<option value="bank">Rekening Bank</option>
-							<option value="ewallet">E-Wallet (GoPay, OVO, dll)</option>
-							<option value="other">Lainnya</option>
-						</select>
-					</div>
-
-					<NumericInput
-						name="initialBalance"
-						label="Saldo Awal"
-						placeholder="0"
-					/>
-
-					<div class="flex items-center justify-end gap-2 pt-2">
-						<Button
-							type="button"
-							variant="outline"
-							onclick={() => (showCreateModal = false)}
-						>
-							Batal
-						</Button>
-						<Button type="submit" variant="primary">
-							Simpan Dompet
-						</Button>
-					</div>
-				</form>
-			</div>
-		</div>
-	{/if}
+				<div class="flex items-center justify-end gap-2 pt-2">
+					<Button
+						type="button"
+						variant="outline"
+						onclick={() => (showCreateModal = false)}
+					>
+						Batal
+					</Button>
+					<Button type="submit" variant="primary">
+						Simpan Dompet
+					</Button>
+				</div>
+			</form>
+		</Dialog.Content>
+	</Dialog.Root>
 
 	<!-- Modal Edit Dompet -->
-	{#if editingWallet}
-		<div class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs">
-			<div class="w-full max-w-md p-6 rounded-xl border-2 border-border bg-surface shadow-hard-lg space-y-4">
-				<div class="flex items-center justify-between">
-					<h3 class="text-lg font-black text-content">Edit Dompet</h3>
-					<button
-						type="button"
-						onclick={() => (editingWallet = null)}
-						class="text-content-muted hover:text-content font-bold text-lg min-h-[44px] min-w-[44px] flex items-center justify-center"
-					>
-						✕
-					</button>
-				</div>
+	<Dialog.Root open={editingWallet !== null} onOpenChange={(open) => { if (!open) editingWallet = null; }}>
+		<Dialog.Content class="space-y-4">
+			{#if editingWallet}
+				<Dialog.Header>
+					<Dialog.Title class="text-lg font-black text-content">Edit Dompet</Dialog.Title>
+				</Dialog.Header>
 
 				<form method="POST" action="?/update" class="space-y-4">
 					<input type="hidden" name="id" value={editingWallet.id} />
@@ -238,7 +214,7 @@
 						</Button>
 					</div>
 				</form>
-			</div>
-		</div>
-	{/if}
+			{/if}
+		</Dialog.Content>
+	</Dialog.Root>
 </div>
