@@ -1,22 +1,11 @@
-import { CategoriesRepo } from './server/repos/categories';
-import { CreateCategorySchema, UpdateCategorySchema, parseInput } from './server/validation';
-import type { RequestEvent } from '@sveltejs/kit';
-import type { AppDatabase } from './server/db/client';
-import type { CategoryKind } from './server/db/schema';
-
-function assertUser(event: RequestEvent): { userId: string; db: AppDatabase } {
-	const locals = event.locals as unknown as { user?: { id: string }; db?: AppDatabase };
-	if (!locals.user?.id) {
-		throw new Error('UNAUTHENTICATED');
-	}
-	if (!locals.db) {
-		throw new Error('Database not initialized');
-	}
-	return { userId: locals.user.id, db: locals.db };
-}
+import { CategoriesRepo } from '../repos/categories';
+import { CreateCategorySchema, UpdateCategorySchema, parseInput } from '../validation';
+import type { AppEvent } from '../types';
+import { assertUser } from '../types';
+import type { CategoryKind } from '../db/schema';
 
 export async function listCategories(
-	event: RequestEvent,
+	event: AppEvent,
 	options?: { kind?: CategoryKind; includeArchived?: boolean }
 ) {
 	const { userId, db } = assertUser(event);
@@ -24,14 +13,14 @@ export async function listCategories(
 	return repo.list(userId, options);
 }
 
-export async function createCategory(event: RequestEvent, input: unknown) {
+export async function createCategory(event: AppEvent, input: unknown) {
 	const { userId, db } = assertUser(event);
 	const validated = parseInput(CreateCategorySchema, input);
 	const repo = new CategoriesRepo(db);
 	return repo.create(userId, validated);
 }
 
-export async function updateCategory(event: RequestEvent, id: string, input: unknown) {
+export async function updateCategory(event: AppEvent, id: string, input: unknown) {
 	const { userId, db } = assertUser(event);
 	const validated = parseInput(UpdateCategorySchema, input);
 	const repo = new CategoriesRepo(db);
@@ -40,7 +29,7 @@ export async function updateCategory(event: RequestEvent, id: string, input: unk
 	return updated;
 }
 
-export async function archiveCategory(event: RequestEvent, id: string) {
+export async function archiveCategory(event: AppEvent, id: string) {
 	const { userId, db } = assertUser(event);
 	const repo = new CategoriesRepo(db);
 	const ok = await repo.archive(userId, id);

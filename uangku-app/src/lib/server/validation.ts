@@ -82,6 +82,8 @@ export const ListTransactionsQuerySchema = v.object({
 	type: v.optional(v.picklist(transactionTypes)),
 	startDate: v.optional(v.string()),
 	endDate: v.optional(v.string()),
+	from: v.optional(v.pipe(v.string(), v.regex(/^\d{4}-\d{2}-\d{2}$/, 'Format tanggal from harus YYYY-MM-DD'))),
+	to: v.optional(v.pipe(v.string(), v.regex(/^\d{4}-\d{2}-\d{2}$/, 'Format tanggal to harus YYYY-MM-DD'))),
 	cursor: v.optional(v.string()),
 	limit: v.optional(v.pipe(v.number(), v.minValue(1), v.maxValue(100)))
 });

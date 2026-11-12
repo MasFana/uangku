@@ -1,50 +1,26 @@
-import { TransactionsRepo } from './server/repos/transactions';
+import { TransactionsRepo, type ListTransactionsResult } from '../repos/transactions';
 import {
 	CreateTransactionSchema,
 	UpdateTransactionSchema,
 	TransferSchema,
 	ListTransactionsQuerySchema,
 	parseInput
-} from './server/validation';
-import type { RequestEvent } from '@sveltejs/kit';
-import type { AppDatabase } from './server/db/client';
+} from '../validation';
+import type { AppEvent } from '../types';
+import { assertUser } from '../types';
+import { invalidateDashboard } from '../cache';
 
-interface SimpleKV {
-	delete(key: string): Promise<void>;
-}
-
-function assertUser(event: RequestEvent): { userId: string; db: AppDatabase; kv?: SimpleKV } {
-	const locals = event.locals as unknown as {
-		user?: { id: string };
-		db?: AppDatabase;
-		kv?: SimpleKV;
-	};
-	if (!locals.user?.id) {
-		throw new Error('UNAUTHENTICATED');
-	}
-	if (!locals.db) {
-		throw new Error('Database not initialized');
-	}
-	return { userId: locals.user.id, db: locals.db, kv: locals.kv };
-}
-
-async function invalidateDashboardCache(kv: SimpleKV | undefined, userId: string) {
-	if (!kv) return;
-	try {
-		await kv.delete(`dashboard:${userId}`);
-	} catch {
-		// cache invalidation fail non-fatal
-	}
-}
-
-export async function listTransactions(event: RequestEvent, query: unknown = {}) {
+export async function listTransactions(
+	event: AppEvent,
+	query: unknown = {}
+): Promise<ListTransactionsResult> {
 	const { userId, db } = assertUser(event);
 	const filter = parseInput(ListTransactionsQuerySchema, query);
 	const repo = new TransactionsRepo(db);
 	return repo.list(userId, filter);
 }
 
-export async function getTransaction(event: RequestEvent, id: string) {
+export async function getTransaction(event: AppEvent, id: string) {
 	const { userId, db } = assertUser(event);
 	const repo = new TransactionsRepo(db);
 	const tx = await repo.getById(userId, id);
@@ -52,39 +28,39 @@ export async function getTransaction(event: RequestEvent, id: string) {
 	return tx;
 }
 
-export async function createTransaction(event: RequestEvent, input: unknown) {
-	const { userId, db, kv } = assertUser(event);
+export async function createTransaction(event: AppEvent, input: unknown) {
+	const { userId, db } = assertUser(event);
 	const validated = parseInput(CreateTransactionSchema, input);
 	const repo = new TransactionsRepo(db);
 	const created = await repo.create(userId, validated);
-	await invalidateDashboardCache(kv, userId);
+	await invalidateDashboard(event, userId);
 	return created;
 }
 
-export async function updateTransaction(event: RequestEvent, id: string, input: unknown) {
-	const { userId, db, kv } = assertUser(event);
+export async function updateTransaction(event: AppEvent, id: string, input: unknown) {
+	const { userId, db } = assertUser(event);
 	const validated = parseInput(UpdateTransactionSchema, input);
 	const repo = new TransactionsRepo(db);
 	const updated = await repo.update(userId, id, validated);
 	if (!updated) throw new Error('NOT_FOUND');
-	await invalidateDashboardCache(kv, userId);
+	await invalidateDashboard(event, userId);
 	return updated;
 }
 
-export async function deleteTransaction(event: RequestEvent, id: string) {
-	const { userId, db, kv } = assertUser(event);
+export async function deleteTransaction(event: AppEvent, id: string) {
+	const { userId, db } = assertUser(event);
 	const repo = new TransactionsRepo(db);
 	const ok = await repo.delete(userId, id);
 	if (!ok) throw new Error('NOT_FOUND');
-	await invalidateDashboardCache(kv, userId);
+	await invalidateDashboard(event, userId);
 	return { success: true };
 }
 
-export async function createTransfer(event: RequestEvent, input: unknown) {
-	const { userId, db, kv } = assertUser(event);
+export async function createTransfer(event: AppEvent, input: unknown) {
+	const { userId, db } = assertUser(event);
 	const validated = parseInput(TransferSchema, input);
 	const repo = new TransactionsRepo(db);
 	const transfer = await repo.transfer(userId, validated);
-	await invalidateDashboardCache(kv, userId);
+	await invalidateDashboard(event, userId);
 	return transfer;
 }

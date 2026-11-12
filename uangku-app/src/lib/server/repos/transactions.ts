@@ -1,4 +1,4 @@
-import { eq, and, desc, lt, gte, lte } from 'drizzle-orm';
+import { eq, and, desc, lt, gte, lte, or } from 'drizzle-orm';
 import type { AppDatabase } from '../db/client';
 import { transactions, type Transaction, type TransactionType } from '../db/schema';
 import { wallets } from '../db/schema';
@@ -29,8 +29,16 @@ export interface ListTransactionsFilter {
 	type?: TransactionType;
 	startDate?: string;
 	endDate?: string;
-	cursor?: string;
+	from?: string; // YYYY-MM-DD
+	to?: string;   // YYYY-MM-DD
+	cursor?: string; // format: "<occurredAt>|<id>" or legacy "<occurredAt>"
 	limit?: number;
+}
+
+export interface ListTransactionsResult {
+	items: Transaction[];
+	nextCursor: string | null;
+	hasMore: boolean;
 }
 
 export class TransactionsRepo {
@@ -39,7 +47,7 @@ export class TransactionsRepo {
 	async list(
 		userId: string,
 		filter: ListTransactionsFilter = {}
-	): Promise<{ items: Transaction[]; nextCursor: string | null }> {
+	): Promise<ListTransactionsResult> {
 		const limit = Math.min(Math.max(filter.limit ?? 20, 1), 100);
 		const conditions = [eq(transactions.userId, userId)];
 
@@ -52,30 +60,48 @@ export class TransactionsRepo {
 		if (filter.type) {
 			conditions.push(eq(transactions.type, filter.type));
 		}
-		if (filter.startDate) {
-			conditions.push(gte(transactions.occurredAt, filter.startDate));
+		// from / to (inclusive YYYY-MM-DD) or fallback startDate / endDate
+		const startCondition = filter.from ? `${filter.from}T00:00:00.000Z` : filter.startDate;
+		if (startCondition) {
+			conditions.push(gte(transactions.occurredAt, startCondition));
 		}
-		if (filter.endDate) {
-			conditions.push(lte(transactions.occurredAt, filter.endDate));
+		const endCondition = filter.to ? `${filter.to}T23:59:59.999Z` : filter.endDate;
+		if (endCondition) {
+			conditions.push(lte(transactions.occurredAt, endCondition));
 		}
 		if (filter.cursor) {
-			conditions.push(lt(transactions.occurredAt, filter.cursor));
+			const pipeIdx = filter.cursor.indexOf('|');
+			if (pipeIdx !== -1) {
+				const cursorAt = filter.cursor.slice(0, pipeIdx);
+				const cursorId = filter.cursor.slice(pipeIdx + 1);
+				conditions.push(
+					or(
+						lt(transactions.occurredAt, cursorAt),
+						and(eq(transactions.occurredAt, cursorAt), lt(transactions.id, cursorId))
+					)!
+				);
+			} else {
+				conditions.push(lt(transactions.occurredAt, filter.cursor));
+			}
 		}
 
-		const items = await this.db
+		const rows = await this.db
 			.select()
 			.from(transactions)
 			.where(and(...conditions))
-			.orderBy(desc(transactions.occurredAt))
+			.orderBy(desc(transactions.occurredAt), desc(transactions.id))
 			.limit(limit + 1);
 
+		const hasMore = rows.length > limit;
+		const items = hasMore ? rows.slice(0, limit) : rows;
+
 		let nextCursor: string | null = null;
-		if (items.length > limit) {
-			const popped = items.pop();
-			nextCursor = popped ? popped.occurredAt : null;
+		if (hasMore && items.length > 0) {
+			const last = items[items.length - 1];
+			nextCursor = `${last.occurredAt}|${last.id}`;
 		}
 
-		return { items, nextCursor };
+		return { items, nextCursor, hasMore };
 	}
 
 	async getById(userId: string, id: string): Promise<Transaction | null> {
