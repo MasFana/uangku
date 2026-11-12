@@ -36,7 +36,7 @@ Format: checklist atomik, urut sesuai dependensi. Agent: kerjakan satu baris = s
 - [x] Y8. Transfer antar dompet
 - [x] Y9. Dashboard nyata dari KV: total saldo, arus kas bulan, breakdown kategori, grafik 6 bulan (SVG buatan sendiri), transaksi terakhir
 - [x] Y10a. Empty state di `/`, `/wallets`, `/categories`, `/transactions` (`EmptyState.svelte`)
-- [ ] Y10b. Skeleton loading — `Skeleton.svelte` sudah ada tapi **tidak dipakai di rute mana pun**; putuskan: pakai dengan streaming `{#await}`/`load` bertahap, atau hapus komponennya
+- [x] Y10b. Skeleton loading — dihapus (YAGNI/dead code); SSR SvelteKit menyajikan data lengkap tanpa streaming deferred
 
 ## Fase 1 lanjutan
 - [ ] F6. Upload struk ke R2 (validasi 5 MB, `image/*`) + endpoint lihat struk
