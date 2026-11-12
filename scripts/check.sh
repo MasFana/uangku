@@ -25,6 +25,7 @@ if [ -x "$IMPECCABLE_BIN" ]; then
 	echo "Impeccable results: $ISSUES"
 	if [ "$ISSUES" != "[]" ] && [ -n "$ISSUES" ]; then
 		echo "Impeccable detected issues in src/"
+		exit 1
 	fi
 else
 	echo "Impeccable binary not found at $IMPECCABLE_BIN; skipping."
@@ -34,6 +35,6 @@ echo "=== [4/4] Vitest Suite ==="
 if [ -f "/usr/local/lib/libresinit.so" ]; then
 	export LD_PRELOAD="/usr/local/lib/libresinit.so"
 fi
-npx vitest run
+npm test
 
 echo "=== ALL CHECKS PASSED ==="

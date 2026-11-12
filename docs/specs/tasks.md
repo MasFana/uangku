@@ -2,43 +2,43 @@
 
 Format: checklist atomik, urut sesuai dependensi. Agent: kerjakan satu baris = satu commit kecil.
 
-## Setup
-- [ ] S1. `npx sv create uangku-app` (template minimal, TS, tanpa add-on) + `@sveltejs/adapter-cloudflare`
-- [ ] S2. Tailwind v4 (`@tailwindcss/vite`) + shadcn-svelte init; buat DESIGN.md tokens → `@theme` di app.css
-- [ ] S3. wrangler.jsonc: D1 `APP_DB`, R2 `RECEIPTS`, assets binding, `nodejs_compat`, observability
-- [ ] S4. `wrangler d1 migrations apply APP_DB --local` pertama dari schema Drizzle
-- [ ] S5. hooks.server.ts: Better-Auth + inject `locals.user`, `locals.db` (Drizzle D1), `locals.r2`
+## Sprint 1 — SELESAI (review: `docs/reviews/sprint1.md`)
+- [x] S1. `npx sv create uangku-app` + `@sveltejs/adapter-cloudflare`
+- [x] S2a. Tailwind v4 (`@tailwindcss/vite`) + token `@theme` di `app.css`
+- [ ] S2b. shadcn-svelte init — **dipindah ke Sprint 2** (orchestrator menjalankan init)
+- [x] S3. `wrangler.jsonc`: D1 `APP_DB`, R2 `RECEIPTS`, KV `CACHE`, assets, `nodejs_compat`, observability
+- [x] S4. Migrasi D1 pertama dari schema Drizzle (`drizzle/0000_useful_black_widow.sql`)
+- [x] S5. `hooks.server.ts`: Better-Auth + `locals.user`, `locals.db`, `locals.r2`, `locals.kv`
+- [x] D1. Drizzle schema: wallets, categories, transactions + tabel Better-Auth
+- [x] D2. Kalkulasi saldo murni (`balance.ts`) + uji
+- [ ] D3. KV cache helper dashboard (TTL 60 s) — cache dipanggil langsung di `dashboard.remote.ts`; helper terpisah belum ada
+- [x] A1. Halaman login & register (email + password saja)
+- [ ] A2. Guard rute: semua rute kecuali `/login`,`/register` butuh sesi — **BELUM ADA**
+- [x] X1. Auth `emailAndPassword` (tanpa OAuth/magic link)
+- [x] X2. Seed demo lokal idempoten (`db:seed:local`)
+- [x] X3. `wrangler.jsonc` siap domain `akularping.my.id` + `BETTER_AUTH_URL`
+- [x] X4. Monogram "U" brutalist + favicon
+- [x] Q1. Vitest: kalkulasi saldo, validasi Valibot, isolasi tenant (35 test lulus)
+- [x] Q2. Detector impeccable: `[]` (nol temuan)
+- [x] Q3. `svelte-check` + `build` lulus
+- [ ] Q4. `BETTER_AUTH_SECRET` di produksi — menunggu kredensial
+- [ ] Q5. Deploy `--remote` — **terblokir**: belum ada API token Cloudflare
+- [x] Q6. Workflow CI (`.github/workflows/ci.yml`) + deploy (`.github/workflows/deploy.yml`)
 
-## Domain
-- [ ] D1. Drizzle schema: wallets, categories, transactions (lihat fase1-prd.md §2) + generate migrasi
-- [ ] D2. Repository layer: kalkulasi saldo dompet (initial + mutasi) — pure function + unit test
-- [ ] D3. KV cache helper: get/invalidate dashboard summary (TTL 60s)
+## Sprint 2 — Fungsionalitas inti
+- [ ] Y1. shadcn-svelte init + komponen dasar (Button, Input, Sheet, Dialog, Select, Table, Chart)
+- [ ] Y2. Guard rute A2 + `redirect` ke `/login` dengan `redirectTo`
+- [ ] Y3. Halaman dompet: list + saldo, create, edit, archive (`/wallets`)
+- [ ] Y4. Halaman kategori: list, create, edit, archive (`/categories`)
+- [ ] Y5. Input transaksi: sheet modal + keypad numerik, validasi Valibot, invalidasi KV
+- [ ] Y6. Daftar transaksi: filter (dompet, kategori, tipe, rentang tanggal) + cursor pagination/infinite scroll
+- [ ] Y7. Edit/hapus transaksi (404 bila bukan milik user)
+- [ ] Y8. Transfer antar dompet
+- [ ] Y9. Dashboard nyata dari KV: total saldo, arus kas bulan, breakdown kategori, grafik 6 bulan, 10 transaksi terakhir
+- [ ] Y10. Empty state + skeleton loading di semua layar
 
-## Auth
-- [ ] A1. Halaman login & register (shadcn form + Valibot)
-- [ ] A2. Guard: semua route kecuali /login,/register butuh sesi (hooks)
-
-## Fitur
-- [ ] F1. Wallets CRUD + archive + list saldo
-- [ ] F2. Categories CRUD + archive
-- [ ] F3. Transaksi create (sheet modal + keypad numerik) — invalidate cache KV
-- [ ] F4. Transaksi list: filter + cursor pagination + infinite scroll
-- [ ] F5. Transaksi edit/delete (404 jika bukan miliknya)
-- [ ] F6. R2 presigned upload struk (validasi 5 MB, image/*) + endpoint lihat struk (auth'd)
-- [ ] F7. Transfer antar dompet (drizzle batch, 1 baris type=transfer)
-- [ ] F8. Dashboard: total saldo, arus kas bulan, breakdown kategori, grafik 6 bulan (shadcn Chart), 10 terakhir — baca dari KV
+## Fase 1 lanjutan
+- [ ] F6. Upload struk ke R2 (validasi 5 MB, `image/*`) + endpoint lihat struk
 - [ ] F9. Export CSV streaming
-
-## QA & Deploy
-- [ ] Q1. vitest-pool-workers: kalkulasi saldo, transfer, filter list
-- [ ] Q2. `/root/.claude/skills/impeccable/scripts/impeccable detect --json src/` — nol P0/P1
-- [ ] Q3. svelte-check + build lulus; cek bundle < 30 MB
-- [ ] Q4. Secrets: BETTER_AUTH_SECRET via wrangler secret put
-- [ ] Q5. Deploy: migrasi --remote → wrangler deploy → smoke test login+input transaksi
-- [ ] Q6. GitHub Actions CI (test → build → deploy dari main) — template di research/05 §5.3
-
-## Tambahan (keputusan pemilik, `docs/DECISIONS.md`)
-- [ ] X1. Auth email+password saja (tanpa OAuth/magic link) — `emailAndPassword` di Better-Auth
-- [ ] X2. Seed demo lokal idempoten: dompet + kategori + contoh transaksi (`src/lib/server/db/seed.ts`) — hanya `--local`
-- [ ] X3. Custom domain `akularping.my.id` di `routes` wrangler (`custom_domain: true`) + `BETTER_AUTH_URL`
-- [ ] X4. Monogram SVG "U" brutalist (komponen Logo + favicon)
+- [ ] Z1. Budget per kategori
+- [ ] Z2. Deploy produksi + smoke test (perlu kredensial)
