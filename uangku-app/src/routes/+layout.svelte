@@ -3,6 +3,7 @@
 	import type { Snippet } from 'svelte';
 	import { page } from '$app/state';
 	import Logo from '../lib/components/Logo.svelte';
+	import ThemeToggle from '../lib/components/ThemeToggle.svelte';
 
 	interface Props {
 		children: Snippet;
@@ -18,6 +19,7 @@
 	const navItems = [
 		{ label: 'Beranda', href: '/', id: 'home' },
 		{ label: 'Transaksi', href: '/transactions', id: 'transactions' },
+		{ label: 'Analisis', href: '/analytics', id: 'analytics' },
 		{ label: 'Dompet', href: '/wallets', id: 'wallets' },
 		{ label: 'Pengaturan', href: '/settings', id: 'settings' }
 	];
@@ -72,9 +74,10 @@
 				</nav>
 
 				<div class="flex items-center gap-2">
+					<ThemeToggle />
 					<a
-						href="/transactions"
-						class="hidden md:inline-flex items-center justify-center min-h-[44px] px-4 py-2 rounded-md border-2 border-border bg-accent text-neutral-900 font-bold text-sm shadow-hard-sm hover:brightness-95 active:translate-x-[2px] active:translate-y-[2px] active:shadow-none transition-all duration-150"
+						href="/transactions?new=1"
+						class="hidden md:inline-flex items-center justify-center min-h-[44px] px-4 py-2 rounded-md border-2 border-border bg-accent text-neutral-950 font-bold text-sm shadow-hard-sm hover:brightness-95 active:translate-x-[2px] active:translate-y-[2px] active:shadow-none transition-all duration-150"
 					>
 						+ Transaksi
 					</a>
@@ -133,7 +136,7 @@
 				<!-- Item 3: Center FAB (+) Button -->
 				<div class="flex items-center justify-center">
 					<a
-						href="/transactions"
+						href="/transactions?new=1"
 						class="w-12 h-12 rounded-full border-2 border-border bg-accent text-neutral-900 flex items-center justify-center shadow-hard-sm active:translate-x-[2px] active:translate-y-[2px] active:shadow-none transition-all duration-150 focus-visible:outline-2 focus-visible:outline-offset-2"
 						aria-label="Tambah Transaksi Baru"
 					>

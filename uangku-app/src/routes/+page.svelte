@@ -74,6 +74,12 @@
 				<h2 class="text-base font-black text-content tracking-tight">Tren Arus Kas 6 Bulan</h2>
 				<p class="text-xs font-semibold text-content-muted">Perbandingan rasio pemasukan vs pengeluaran</p>
 			</div>
+			<a
+				href="/analytics"
+				class="text-xs font-bold text-content hover:underline inline-flex items-center min-h-[44px] px-2"
+			>
+				Lihat Analisis Detail →
+			</a>
 		</div>
 
 		<CashflowChart data={summary.sixMonthTrend ?? []} height={180} />
