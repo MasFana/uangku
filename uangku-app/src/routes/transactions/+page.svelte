@@ -7,14 +7,23 @@
 	import Badge from '$lib/components/Badge.svelte';
 	import * as Dialog from '$lib/components/ui/dialog/index.js';
 	import { formatRupiah, formatDateIndo } from '$lib/utils';
+	import { page } from '$app/state';
+	import { goto } from '$app/navigation';
 	import type { PageData, ActionData } from './$types';
 
 	let { data, form }: { data: PageData; form: ActionData } = $props();
 
 	// Modal / form states
-	let showCreateModal = $state(false);
+	let showCreateModal = $state(page.url.searchParams.get('new') === '1');
 	let transactionKind = $state<'expense' | 'income' | 'transfer'>('expense');
 	let editingTransaction = $state<any | null>(null);
+
+	function handleCreateOpenChange(open: boolean) {
+		showCreateModal = open;
+		if (!open && page.url.searchParams.get('new') === '1') {
+			goto('/transactions', { invalidateAll: false, replaceState: true });
+		}
+	}
 
 	// Client-side quick helper map for wallet & category names
 	const walletMap = $derived(
@@ -229,7 +238,7 @@
 	{/if}
 
 	<!-- Modal Tambah Transaksi -->
-	<Dialog.Root bind:open={showCreateModal}>
+	<Dialog.Root open={showCreateModal} onOpenChange={handleCreateOpenChange}>
 		<Dialog.Content class="space-y-4 max-h-[90vh] overflow-y-auto sm:max-w-lg">
 			<Dialog.Header>
 				<Dialog.Title class="text-lg font-black text-content">Catat Transaksi Baru</Dialog.Title>

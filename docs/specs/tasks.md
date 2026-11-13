@@ -74,3 +74,11 @@ Keputusan pemilik (2026-11-12), keempatnya opsi yang diusulkan:
 - [ ] B5. Uji: resolusi periode (batas bulan, Februari, pergantian tahun, `all`, custom inklusif, period tak valid), agregat harian (transfer dikecualikan, `count` termasuk transfer), total hari terbelah = total hari penuh, kontrak pagination kursor tidak berubah. Pemilik: qa-review.
 
 Catatan lingkup: pengelompokan dilakukan di klien dari daftar yang sudah urut `occurredAt` desc; server hanya memasok angka total per hari supaya tidak ada total yang salah saat satu hari terbelah dua halaman.
+
+## Sprint 5 — Kerangka aplikasi: judul header + FAB
+Keputusan pemilik (2026-11-12):
+- Judul header: teks "Uangku" diganti nama halaman, "Uangku" hanya di beranda. `<h1>` tiap halaman menjadi `sr-only` supaya judul tidak tampil dua kali secara visual (tetap ada untuk pembaca layar dan struktur dokumen).
+
+- [ ] C1. Peta route → label dipakai bersama header dan nav bawah (satu sumber nama). Monogram tetap tautan ke beranda dengan `aria-label="Uangku, beranda"`. Pemilik: ui-design.
+- [ ] C2. `<h1>` tiap halaman jadi `sr-only` (transaksi, dompet, kategori, analisis, setelan, beranda tetap boleh tampil karena judulnya memang isi halaman). Pemilik: ui-design.
+- [ ] C3. FAB: menunggu keputusan prinsip (lihat diskusi). Pemilik: ui-design.

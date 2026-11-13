@@ -5,11 +5,13 @@
 	import EmptyState from '$lib/components/EmptyState.svelte';
 	import Badge from '$lib/components/Badge.svelte';
 	import * as Dialog from '$lib/components/ui/dialog/index.js';
+	import { enhance } from '$app/forms';
 	import type { PageData, ActionData } from './$types';
 
 	let { data, form }: { data: PageData; form: ActionData } = $props();
 
 	let showCreateModal = $state(false);
+	let isSeeding = $state(false);
 	let editingCategory = $state<{
 		id: string;
 		name: string;
@@ -98,14 +100,40 @@
 
 	<!-- Categories Grid -->
 	{#if !filteredCategories || filteredCategories.length === 0}
-		<EmptyState
-			title="Belum Ada Kategori"
-			description="Tambahkan kategori baru seperti Makanan, Transportasi, atau Gaji."
-			actionLabel="+ Buat Kategori"
-			onclick={() => {
-				showCreateModal = true;
-			}}
-		/>
+		<div class="space-y-4">
+			<EmptyState
+				title="Belum Ada Kategori"
+				description="Tambahkan kategori baru seperti Makanan, Transportasi, atau Gaji."
+				actionLabel="+ Buat Kategori"
+				onclick={() => {
+					showCreateModal = true;
+				}}
+			/>
+			{#if (!data.categories || data.categories.length === 0)}
+				<div class="flex justify-center">
+					<form
+						method="POST"
+						action="?/seedDefaults"
+						use:enhance={() => {
+							isSeeding = true;
+							return async ({ update }) => {
+								await update();
+								isSeeding = false;
+							};
+						}}
+					>
+						<Button
+							type="submit"
+							variant="outline"
+							disabled={isSeeding}
+							class="min-h-[44px]"
+						>
+							{isSeeding ? 'Menambahkan…' : 'Isi kategori bawaan'}
+						</Button>
+					</form>
+				</div>
+			{/if}
+		</div>
 	{:else}
 		<div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
 			{#each filteredCategories as category}
