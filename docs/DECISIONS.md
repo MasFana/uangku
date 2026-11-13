@@ -66,8 +66,8 @@ Larangan visual (dari skill antislop, tetap berlaku): gradien ungu-biru, kartu b
 - `npm run check` (~3 mnt), `npm run build` (~3 mnt), dan `npx vitest run` (~1,5–3 mnt) harus dijalankan **berurutan**, tidak bersamaan antar-role. RAM host 1,9 GB; perintah berat serentak menyebabkan timeout (kejadian: `npm run check` timeout 2×).
 
 ## Deploy produksi (Sprint 2)
-- Akun Cloudflare: `Fanaapi425@gmail.com's Account`, id `7df6da303aefe528f78028f5d5526d94`; CLI login sebagai `adrianfathan69@gmail.com` (OAuth).
-- Resource dibuat 2026-11-12: D1 `APP_DB` id `e73aa0f0-258d-400b-8bd9-e93bb39a48b3` (region APAC), KV `CACHE` id `cafd7699ba264d41873423b82644b8c1`.
+- Akun Cloudflare: satu akun kerja; nama dan id akun tidak ditulis di repo.
+- Resource dibuat 2026-11-12: D1 `APP_DB` (region APAC) dan KV `CACHE`. Kedua id ada di `uangku-app/wrangler.jsonc`; siapa pun yang memakai repo ini menggantinya dengan miliknya sendiri (`docs/development.md`).
 - **R2 dinonaktifkan sementara** di `wrangler.jsonc`: `wrangler r2 bucket create` gagal dengan `code 10042 Please enable R2 through the Cloudflare Dashboard`. Binding `RECEIPTS` dan bucket `uangku-receipts` dinyalakan kembali saat F6 (upload struk) dikerjakan. Pemilik harus mengaktifkan R2 di dashboard dulu.
 - Secret wajib di produksi: `BETTER_AUTH_SECRET` (acak, ≥32 karakter), `BETTER_AUTH_URL=https://akularping.my.id`. Secret `AI_*` belum diisi karena `.dev.vars` masih berisi placeholder dan fitur AI belum diimplementasikan.
 

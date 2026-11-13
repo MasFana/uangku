@@ -19,7 +19,7 @@ echo "=== [2/4] Build (SvelteKit + Cloudflare Adapter) ==="
 npm run build
 
 echo "=== [3/4] Impeccable Design Smell Detection ==="
-IMPECCABLE_BIN="/root/.claude/skills/impeccable/scripts/impeccable"
+IMPECCABLE_BIN="${IMPECCABLE_BIN:-/root/.claude/skills/impeccable/scripts/impeccable}"
 if [ -x "$IMPECCABLE_BIN" ]; then
 	ISSUES="$("$IMPECCABLE_BIN" detect --json src/)"
 	echo "Impeccable results: $ISSUES"

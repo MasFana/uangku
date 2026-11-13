@@ -4,7 +4,6 @@ Orchestrator: **Pi** (sesi utama). Semua laporan task ditulis dalam Bahasa Indon
 
 ## Aturan umum (semua role wajib baca)
 - Baca `AGENTS.md`, `PRODUCT.md`, dan **`docs/DECISIONS.md`** (keputusan tetap: tema, pola kode, font, motion) sebelum menyentuh kode. Spec kerja: `docs/specs/fase1-prd.md` + `docs/specs/tasks.md`.
-- Konteks teknis lengkap: `../Cloudflared-Project/00-OVERVIEW.md` + `../Cloudflared-Project/research/01..05`.
 - **Bahasa**: teks UI + commit message Indonesia; nama variabel/fungsi/komentar kode Inggris.
 - **Setor hasil**: commit kecil langsung ke `main` (repo `/home/public/pocket/uangku`), pesan commit `tipe(scope): deskripsi`. Jangan push (tidak ada remote).
 - **Commit SEGERA setelah pekerjaanmu berfungsi.** Jangan pernah meninggalkan pekerjaan selesai sebagai berkas belum ter-commit lalu melanjutkan tugas lain. Ada satu pohon kerja bersama: berkas yang belum di-commit bisa hilang karena aksi role lain (kejadian nyata: 3 berkas uji + 2 perbaikan hilang).
@@ -15,7 +14,7 @@ Orchestrator: **Pi** (sesi utama). Semua laporan task ditulis dalam Bahasa Indon
 - Uang selalu integer rupiah. Tidak ada float. Tidak ada `fs`.
 - Binding D1/R2/KV diakses dari `event.platform.env` (adapter ^8: `cloudflare:workers` env) — **jangan** di module scope.
 - Sebelum lapor selesai: jalankan `npm run check` dan test terkait, lalu tulis hasilnya apa adanya (termasuk yang gagal).
-- UI: ikuti `DESIGN.md` dan `docs/DECISIONS.md`; jalankan `/root/.claude/skills/impeccable/scripts/impeccable detect --json src/` dan perbaiki temuan P0/P1. Muat skill `antislop` (+ `antislop-ui`, `antislop-human`, `antislop-layoutmobile` sesuai kebutuhan) dari `/root/.agents/skills/` dan patuhi isinya.
+- UI: ikuti `DESIGN.md` dan `docs/DECISIONS.md`; jalankan detector desain lewat `scripts/check.sh` (langkah 3) dan perbaiki temuan P0/P1. Bila agen Anda punya skill `antislop`, muat skill itu (+ `antislop-ui`, `antislop-human`, `antislop-layoutmobile` sesuai kebutuhan) dan patuhi isinya.
 
 ## Peta kepemilikan file
 
@@ -52,7 +51,7 @@ Orchestrator: **Pi** (sesi utama). Semua laporan task ditulis dalam Bahasa Indon
 3. `src/app.html`: lang `id`, meta viewport, font stack.
 4. Shell: `+layout.svelte` mobile-first (bottom nav / FAB), `+error.svelte`.
 5. Halaman `/login` & `/register` (form + state loading/error, target sentuh ≥44px).
-6. Jalankan `/root/.claude/skills/impeccable/scripts/impeccable detect --json src/`.
+6. Jalankan detector desain (langkah 3 `scripts/check.sh`).
 
 ### qa-review
 1. `vitest.config.ts`: `defineWorkersConfig` + `wrangler.configPath`, pool workers.

@@ -1,7 +1,12 @@
 #!/bin/sh
-# Smoke test produksi Uangku. Pakai: sh scripts/smoke.sh [base-url]
+# Smoke test Uangku. Pakai: sh scripts/smoke.sh <base-url>
+# Contoh: sh scripts/smoke.sh https://uangku.example.workers.dev
 # Gagal bila binding D1 tidak terbaca (gejala: 500 "Database binding APP_DB missing").
-BASE=${1:-https://uangku.fanaapi425.workers.dev}
+BASE=${1:-${BASE_URL:-}}
+if [ -z "$BASE" ]; then
+	echo "Pakai: sh scripts/smoke.sh <base-url>" >&2
+	exit 2
+fi
 fail=0
 
 check() {
