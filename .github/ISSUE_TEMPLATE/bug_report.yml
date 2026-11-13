@@ -1,0 +1,79 @@
+name: Bug report
+description: Something in Uangku is broken or shows a wrong number
+title: "[bug] "
+labels:
+  - bug
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for the report. Do not paste session cookies, e-mail addresses, or real transaction data.
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - Dashboard
+        - Transactions
+        - Wallets
+        - Categories
+        - Analytics
+        - CSV export
+        - Sign in or register
+        - Other
+    validations:
+      required: true
+  - type: input
+    id: url
+    attributes:
+      label: Page or endpoint
+      description: The path you were on, for example /transactions?period=2026-11
+      placeholder: /analytics?range=month
+    validations:
+      required: true
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened
+      description: What you saw, including any number that looked wrong.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What you expected
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Open /wallets and create a wallet with a starting balance
+        2. Add a transfer between two wallets
+        3. Open /transactions and look at the day total
+    validations:
+      required: true
+  - type: input
+    id: viewport
+    attributes:
+      label: Screen size and browser
+      description: Uangku is mobile first, so the width matters.
+      placeholder: 390 px wide, Chrome on Android
+    validations:
+      required: false
+  - type: input
+    id: commit
+    attributes:
+      label: Commit or deployment
+      placeholder: 16d49ac or a workers.dev URL
+    validations:
+      required: false
+  - type: textarea
+    id: response
+    attributes:
+      label: Response status or console output
+      description: Paste status codes or errors, with secrets removed.
+      render: text
+    validations:
+      required: false

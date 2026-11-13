@@ -1,0 +1,52 @@
+name: Feature request
+description: Suggest a change, or an addition to the roadmap
+title: "[feature] "
+labels:
+  - enhancement
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Uangku is deliberately narrow: Indonesian rupiah, personal use, one account per person.
+        Read the "Scope" section of CONTRIBUTING.md before you write, and check docs/specs/roadmap.md.
+  - type: textarea
+    id: problem
+    attributes:
+      label: The problem
+      description: Describe the situation where the app gets in your way. Skip the solution for now.
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Smallest change that would fix it
+      description: What is the least the app has to do for the problem to go away?
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives you considered
+      description: Including doing nothing, or using a spreadsheet.
+    validations:
+      required: false
+  - type: dropdown
+    id: ecosystem
+    attributes:
+      label: Would it need a new service or dependency?
+      options:
+        - No, it fits the current stack
+        - It needs a new npm dependency
+        - It needs a new Cloudflare service
+        - Not sure
+    validations:
+      required: true
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Before submitting
+      options:
+        - label: I searched existing issues and docs/specs/roadmap.md
+          required: true
+        - label: This stays inside the scope above
+          required: true
