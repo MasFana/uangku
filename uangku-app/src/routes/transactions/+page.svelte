@@ -329,12 +329,12 @@
 					<!-- Baris Transaksi Padat (min-h 44px, tanpa kartu terpisah) -->
 					<div class="divide-y-2 divide-border/20 border-2 border-border rounded-md bg-surface overflow-hidden shadow-hard-xs">
 						{#each dayGroup.items as tx}
-							<div class="px-3 py-2 min-h-[44px] flex items-center justify-between gap-2 hover:bg-surface-subtle/50 transition-colors">
+							<div class="px-2.5 sm:px-3 py-1 sm:py-1.5 min-h-[48px] flex items-center justify-between gap-2 hover:bg-surface-subtle/50 transition-colors">
 								<!-- Kiri: Badge + Catatan/Kategori + Dompet -->
-								<div class="flex items-center gap-2.5 min-w-0">
+								<div class="flex items-center gap-2 min-w-0">
 									<Badge
 										variant={tx.type === 'income' ? 'income' : tx.type === 'expense' ? 'expense' : 'neutral'}
-										class="shrink-0"
+										class="shrink-0 text-[10px] sm:text-xs"
 									>
 										{tx.type === 'income' ? 'Masuk' : tx.type === 'expense' ? 'Keluar' : 'Transfer'}
 									</Badge>
@@ -353,7 +353,7 @@
 								</div>
 
 								<!-- Kanan: Nominal + Tombol Aksi -->
-								<div class="flex items-center gap-2 shrink-0">
+								<div class="flex items-center gap-1.5 sm:gap-2 shrink-0">
 									<p
 										class="text-xs sm:text-sm font-black font-mono tabular-nums {tx.type === 'income'
 											? 'text-income'
@@ -371,7 +371,7 @@
 												editingTransaction = tx;
 												showCreateModal = false;
 											}}
-											class="relative after:absolute after:-inset-1 after:content-[''] px-2 py-1 text-xs font-bold rounded border border-border bg-surface hover:bg-surface-subtle transition-all min-h-[36px] min-w-[36px]"
+											class="min-h-[44px] min-w-[44px] px-2 py-1 text-xs font-bold rounded border border-border bg-surface hover:bg-surface-subtle transition-all flex items-center justify-center"
 											aria-label="Edit transaksi"
 										>
 											Edit
@@ -383,7 +383,7 @@
 												onclick={(e) => {
 													if (!confirm('Hapus transaksi ini? Saldo dompet akan disesuaikan kembali.')) e.preventDefault();
 												}}
-												class="relative after:absolute after:-inset-1 after:content-[''] px-2 py-1 text-xs font-bold rounded border border-border bg-surface text-danger hover:bg-danger/10 transition-all min-h-[36px] min-w-[36px]"
+												class="min-h-[44px] min-w-[44px] px-2 py-1 text-xs font-bold rounded border border-border bg-surface text-danger hover:bg-danger/10 transition-all flex items-center justify-center"
 												aria-label="Hapus transaksi"
 											>
 												Hapus
