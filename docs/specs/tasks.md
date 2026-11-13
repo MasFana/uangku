@@ -59,3 +59,18 @@ Catatan lingkup: tab harian/mingguan/bulanan TIDAK dipasang di beranda; beranda 
 ## Sprint 3 tambahan (permintaan pemilik)
 - [ ] A7. Perbaikan FAB `+`: tombol di nav bawah dan tombol "+ Transaksi" di header saat ini hanya `<a href="/transactions">` padahal labelnya "Tambah Transaksi Baru". Diarahkan ke `/transactions?new=1`; halaman transaksi membuka modal dari parameter `new` dan membersihkan parameter saat menutup. Pemilik: ui-design.
 - [ ] A8. Kategori bawaan: `DEFAULT_CATEGORIES` (12 pengeluaran + 5 pemasukan, kolom `icon` dibiarkan NULL) + `seedDefaultCategories(event)` yang idempotent per (kind, nama) + action `seedDefaults` + tombol "Isi kategori bawaan" pada keadaan kosong `/categories`. Tidak ada seed otomatis saat daftar. Pemilik: domain-backend (+ tombol oleh ui-design).
+
+## Sprint 4 — Halaman transaksi: periode, pengelompokan harian, filter ringkas
+Keputusan pemilik (2026-11-12), keempatnya opsi yang diusulkan:
+1. Rentang: **bulan + panah** `‹ November 2026 ›` sebagai satuan utama, tombol Kustom membuka date picker, ada opsi Semua. Default bulan berjalan.
+2. Total harian: **net saja** (satu angka per hari).
+3. Hari yang terbelah pagination: **total penuh dari query agregat**, jadi angka tetap benar walau barisnya belum termuat semua.
+4. Filter: **ringkas di ponsel + sheet**, inline di desktop.
+
+- [ ] B1. Kontrak URL `/transactions`: `period=YYYY-MM|all|custom` (+ `startDate`/`endDate` bila custom). Param lama `walletId`, `categoryId`, `type`, `limit`, `cursor`, `new` tetap. Pemilik: domain-backend.
+- [ ] B2. `load` mengembalikan `filters.period`, `filters.label`, `periodNav { prev, next, isCurrent }`, `dayTotals [{ date, income, expense, net, count }]` (hanya hari yang muncul di halaman), `hasAnyTransaction`. Pemilik: domain-backend.
+- [ ] B3. Query agregat harian di repo (Drizzle, parameterized): transfer dikecualikan dari income/expense/net, tetapi dihitung di `count`. Batas rentang inklusif memakai `from`/`to` (`T00:00:00.000Z` s/d `T23:59:59.999Z`) yang sudah ada di repo. Pemilik: domain-backend.
+- [ ] B4. UI: baris periode ringkas + chip filter aktif + sheet filter; daftar dikelompokkan per hari dengan divider (nama hari + total net, teks sr-only lengkap); baris transaksi padat tanpa kartu per transaksi. Pemilik: ui-design.
+- [ ] B5. Uji: resolusi periode (batas bulan, Februari, pergantian tahun, `all`, custom inklusif, period tak valid), agregat harian (transfer dikecualikan, `count` termasuk transfer), total hari terbelah = total hari penuh, kontrak pagination kursor tidak berubah. Pemilik: qa-review.
+
+Catatan lingkup: pengelompokan dilakukan di klien dari daftar yang sudah urut `occurredAt` desc; server hanya memasok angka total per hari supaya tidak ada total yang salah saat satu hari terbelah dua halaman.
