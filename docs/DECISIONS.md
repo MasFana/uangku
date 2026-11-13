@@ -20,8 +20,8 @@ Larangan visual (dari skill antislop, tetap berlaku): gradien ungu-biru, kartu b
 |---|---|
 | Login | **Email + password saja** (Better-Auth `emailAndPassword`). Tanpa OAuth, tanpa magic link, tanpa verifikasi email |
 | Branding | Nama **Uangku** + **monogram huruf** bergaya brutalist (SVG sendiri). Tanpa ikon bawaan Lucide untuk logo |
-| Domain produksi | **akularping.my.id** (custom domain Cloudflare). Worker memakai `routes` dengan `custom_domain: true` |
-| Data awal | **Seed demo lokal saja** (`--local`); database produksi kosong, tanpa kategori bawaan |
+| Domain produksi | **workers.dev** (`uangku.fanaapi425.workers.dev`). Custom domain `akularping.my.id` belum aktif: token OAuth CLI hanya punya scope `zone:read`, tanpa izin edit DNS |
+| Data awal | **Seed demo lokal** (`--local`). Di produksi, 17 kategori bawaan disisipkan otomatis saat akun dibuat (lihat bagian "Kategori bawaan") |
 
 ## Kode
 | Aspek | Keputusan |
@@ -120,9 +120,11 @@ Larangan visual (dari skill antislop, tetap berlaku): gradien ungu-biru, kartu b
 - Bucket dihitung UTC, minggu mulai Senin, dan rangkaian bucket selalu kontinu (hari tanpa transaksi tetap muncul bernilai 0) supaya grafik tidak menipu dengan celah waktu.
 - Grafik memakai ulang `CashflowChart.svelte` tanpa perubahan; tidak ada pustaka chart.
 
-## Kategori bawaan: 17 kategori, lewat tombol, idempotent
+## Kategori bawaan: 17 kategori, otomatis saat daftar, idempotent
 - `DEFAULT_CATEGORIES` di `src/lib/server/defaults.ts`: 12 pengeluaran + 5 pemasukan, `icon` NULL (UI tidak merender ikon, jadi mengisinya hanya menambah data yang tidak terpakai).
-- Penyisipan **tidak** otomatis saat daftar kosong, melainkan lewat tombol "Isi kategori bawaan" (`POST ?/seedDefaults`). Pengguna tetap wajib membuat dompet lebih dulu, jadi seed otomatis tidak menghilangkan langkah apa pun; sebaliknya seed otomatis bisa mengisi kategori yang tidak diinginkan.
+- **Awalnya** penyisipan hanya lewat tombol "Isi kategori bawaan" (`POST ?/seedDefaults`), atas alasan pengguna tetap wajib membuat dompet lebih dulu dan seed otomatis bisa mengisi kategori yang tidak diinginkan.
+- **Diubah** (2026-11-13): hook `databaseHooks.user.create.after` memanggil `seedDefaultsForUser(db, userId)`, jadi akun baru langsung punya kategori. Pengguna yang mendaftar lalu membatalkan tetap lebih paham aplikasinya saat melihat kategori yang sudah ada; kegagalan hook ditelan dan dicatat sebagai `console.log` JSON `{event: 'seed_default_categories_failed'}`, supaya kegagalan seed tidak menggagalkan pendaftaran. Tombol "Isi kategori bawaan" tetap ada untuk akun lama dan akun yang menghapus kategorinya.
+- Akun yang sudah ada ditutup migrasi backfill `0001` (idempotent, `INSERT ... WHERE NOT EXISTS`).
 - Idempotent per `(kind, nama huruf kecil)`: aman dipanggil berulang.
 - `src/lib/server/services/categories.ts` menyisipkan per potongan 5 baris. Satu statement berisi 17 baris x 8 kolom = 136 parameter melebihi batas 100 parameter D1 (`D1_ERROR: too many SQL variables`). Batas ini terjawab di Miniflare maupun produksi, jadi jumlah kolom pada record wajib dihitung ulang bila ditambah.
 
