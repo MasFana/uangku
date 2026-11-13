@@ -74,14 +74,25 @@
 				<span class="text-content-muted">→</span>
 			</a>
 
+	<!-- Ekspor Data -->
+	<Card class="p-6 space-y-3">
+		<h2 class="text-base font-black text-content">
+			Ekspor Data
+		</h2>
+		<p class="text-xs text-content-muted leading-relaxed">
+			Unduh seluruh data transaksi Anda dalam satu berkas CSV untuk arsip pribadi atau analisis mandiri.
+		</p>
+		<div class="pt-1">
 			<a
 				href="/api/export"
 				download
-				class="p-4 rounded-md border-2 border-border bg-surface hover:bg-surface-subtle font-bold text-sm shadow-hard-xs flex items-center justify-between sm:col-span-2"
+				class="inline-flex items-center justify-center min-h-[44px] px-4 py-2 rounded-md border-2 border-border bg-surface hover:bg-surface-subtle text-content font-bold text-sm shadow-hard-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-content transition-all"
 			>
 				<span>Unduh Transaksi (CSV)</span>
-				<span class="text-content-muted">↓</span>
+				<span class="ml-2 text-content-muted" aria-hidden="true">↓</span>
 			</a>
+		</div>
+	</Card>
 		</div>
 	</Card>
 
