@@ -19,6 +19,12 @@
 	let transactionKind = $state<'expense' | 'income' | 'transfer'>('expense');
 	let editingTransaction = $state<any | null>(null);
 
+	$effect(() => {
+		if (page.url.searchParams.get('new') === '1') {
+			showCreateModal = true;
+		}
+	});
+
 	function handleCreateOpenChange(open: boolean) {
 		showCreateModal = open;
 		if (!open && page.url.searchParams.get('new') === '1') {

@@ -30,8 +30,8 @@
 <div class="space-y-6">
 	<h1 class="sr-only">Dompet & Rekening</h1>
 
-	<!-- Page Header -->
-	<div class="flex items-center justify-end">
+	<!-- Page Header: Desktop only button -->
+	<div class="hidden md:flex items-center justify-end">
 		<Button
 			variant="primary"
 			size="md"
@@ -210,4 +210,21 @@
 			{/if}
 		</Dialog.Content>
 	</Dialog.Root>
+
+	<!-- Mobile Floating Action Button (FAB) -->
+	<button
+		type="button"
+		onclick={() => {
+			showCreateModal = true;
+			editingWallet = null;
+		}}
+		class="md:hidden fixed bottom-24 right-4 z-40 w-14 h-14 rounded-full border-2 border-border bg-accent text-neutral-950 flex items-center justify-center shadow-hard hover:brightness-95 active:translate-x-[2px] active:translate-y-[2px] active:shadow-none transition-all duration-150 focus-visible:outline-2 focus-visible:outline-offset-2"
+		aria-label="Tambah dompet baru"
+		title="Tambah dompet baru"
+	>
+		<svg class="w-6 h-6 stroke-[3]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+			<line x1="12" y1="5" x2="12" y2="19"></line>
+			<line x1="5" y1="12" x2="19" y2="12"></line>
+		</svg>
+	</button>
 </div>

@@ -42,7 +42,7 @@
 			</div>
 			<div class="shrink-0">
 				<a
-					href="/transactions"
+					href="/transactions?new=1"
 					class="inline-flex items-center justify-center min-h-[44px] px-3.5 py-2 rounded-md border-2 border-border bg-surface text-content font-bold text-xs sm:text-sm shadow-hard-sm hover:bg-surface-subtle active:translate-x-[2px] active:translate-y-[2px] active:shadow-none transition-all duration-150"
 				>
 					+ Transaksi Baru
@@ -190,7 +190,7 @@
 				title="Belum ada transaksi"
 				description="Catat pengeluaran harian atau pemasukan Anda agar kondisi finansial tetap terpantau rapi."
 				actionLabel="+ Catat Transaksi Baru"
-				actionHref="/transactions"
+				actionHref="/transactions?new=1"
 			/>
 		{:else}
 			<div class="space-y-2">
