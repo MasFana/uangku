@@ -20,6 +20,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 - Mobile shell with bottom navigation, a center action that starts a transaction from any screen, and a desktop floating action button.
 - `scripts/check.sh`, which runs typecheck, build, the design detector, and tests in order.
 - Smoke test script for a deployed worker: `/login`, `/api/auth/get-session`, and the redirect on `/`.
+- Repository files for a public release: README with screenshots of the running app, MIT `LICENSE`, `CONTRIBUTING.md`, `SECURITY.md`, `CODE_OF_CONDUCT.md`, issue and pull request templates, a deploy workflow, app icons, and a social preview image.
 
 ### Fixed
 
@@ -39,10 +40,11 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 - The floating action button now means "record a transaction" everywhere. Wallet and category forms use labelled buttons in the page header instead.
 - The seeder inserts categories in chunks of 5 rows, because one statement with 17 rows and 8 columns exceeds the 100 bound parameter limit in D1.
 - SvelteKit remote functions stay off. The earlier `*.remote.ts` files were moved into `src/lib/server/services/`.
+- The app package is named `uangku`, and `scripts/check.sh` finds the design detector on `PATH` instead of a fixed location.
 
 ### Known gaps
 
-- Receipt photos to R2 are not implemented. The `RECEIPTS` binding is absent from `wrangler.jsonc` while R2 is disabled on the original account.
+- Receipt photos to R2 are not implemented. The `RECEIPTS` binding is absent from `wrangler.jsonc`, because R2 is turned off on the deployment account.
 - AI insight and receipt scanning are not implemented. `AI_BASE_URL`, `AI_API_KEY`, and `AI_MODEL` are reserved secret names with no reader in the code.
 - Budgets, tags with D1 FTS5 search, savings goals, recurring entries, multi currency, and offline support are planned in `docs/specs/roadmap.md`.
 - The app runs on a `workers.dev` hostname. The custom domain is not connected.
