@@ -81,4 +81,5 @@ Keputusan pemilik (2026-11-12):
 
 - [ ] C1. Peta route → label dipakai bersama header dan nav bawah (satu sumber nama). Monogram tetap tautan ke beranda dengan `aria-label="Uangku, beranda"`. Pemilik: ui-design.
 - [ ] C2. `<h1>` tiap halaman jadi `sr-only` (transaksi, dompet, kategori, analisis, setelan, beranda tetap boleh tampil karena judulnya memang isi halaman). Pemilik: ui-design.
-- [ ] C3. FAB: menunggu keputusan prinsip (lihat diskusi). Pemilik: ui-design.
+- [ ] C3. FAB prinsip **global**: `+` di nav tengah tetap berarti "catat transaksi" di semua halaman (ponsel), ditambah FAB mengambang kanan-bawah khusus desktop (`hidden md:flex fixed bottom-6 right-6`) karena desktop sekarang tidak punya FAB sama sekali. Tombol "+ Transaksi" di header desktop dan "+ Catat Transaksi" di header halaman transaksi dihapus (tergantikan FAB); empty state tetap. Dompet & kategori tetap memakai tombol di baris header halaman, bukan FAB. Pemilik: ui-design.
+- [ ] C4. Pengurangan kebingungan pada halaman yang punya tombol "+" sendiri (`/wallets`, `/categories`): FAB nav memakai `aria-label="Catat transaksi"` dan ikon berbeda dari tombol halaman; tombol halaman selalu bertext lengkap ("+ Tambah Dompet"). Pemilik: ui-design.
