@@ -38,7 +38,7 @@
 	});
 
 	const desktopNavItems = [
-		{ label: routeMap['/'], href: '/' },
+		{ label: 'Beranda', href: '/' },
 		{ label: routeMap['/transactions'], href: '/transactions' },
 		{ label: routeMap['/analytics'], href: '/analytics' },
 		{ label: routeMap['/wallets'], href: '/wallets' },
