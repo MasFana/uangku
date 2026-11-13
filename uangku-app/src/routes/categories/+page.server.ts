@@ -1,5 +1,13 @@
 import type { PageServerLoad, Actions } from './$types';
-import { listCategories, createCategory, updateCategory, archiveCategory } from '$lib/server/services/categories';
+import {
+	listCategories,
+	createCategory,
+	updateCategory,
+	archiveCategory,
+	seedDefaultCategories
+} from '$lib/server/services/categories';
+import { invalidateDashboard } from '$lib/server/cache';
+import { assertUser } from '$lib/server/types';
 import { fail } from '@sveltejs/kit';
 
 export const load: PageServerLoad = async (event) => {
@@ -55,6 +63,18 @@ export const actions: Actions = {
 			return { success: true };
 		} catch (err: unknown) {
 			const message = err instanceof Error ? err.message : 'Gagal mengarsipkan kategori';
+			return fail(400, { error: message });
+		}
+	},
+
+	seedDefaults: async (event) => {
+		try {
+			const { userId } = assertUser(event);
+			const inserted = await seedDefaultCategories(event);
+			await invalidateDashboard(event, userId);
+			return { success: true, inserted };
+		} catch (err: unknown) {
+			const message = err instanceof Error ? err.message : 'Gagal menyalin kategori bawaan';
 			return fail(400, { error: message });
 		}
 	}

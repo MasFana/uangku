@@ -2,7 +2,8 @@ import { CategoriesRepo } from '../repos/categories';
 import { CreateCategorySchema, UpdateCategorySchema, parseInput } from '../validation';
 import type { AppEvent } from '../types';
 import { assertUser } from '../types';
-import type { CategoryKind } from '../db/schema';
+import { categories, type CategoryKind } from '../db/schema';
+import { DEFAULT_CATEGORIES } from '../defaults';
 
 export async function listCategories(
 	event: AppEvent,
@@ -35,4 +36,45 @@ export async function archiveCategory(event: AppEvent, id: string) {
 	const ok = await repo.archive(userId, id);
 	if (!ok) throw new Error('NOT_FOUND');
 	return { success: true };
+}
+
+/**
+ * Seeds default categories for the current user if not already present.
+ * Matches existing active categories by (kind, case-insensitive name).
+ * Idempotent: safe to run multiple times without creating duplicates.
+ * Returns the count of newly inserted categories.
+ */
+export async function seedDefaultCategories(event: AppEvent): Promise<number> {
+	const { userId, db } = assertUser(event);
+	const repo = new CategoriesRepo(db);
+
+	// Read existing active categories for user
+	const existing = await repo.list(userId, { includeArchived: false });
+	const existingSet = new Set(
+		existing.map((c) => `${c.kind}:${c.name.trim().toLowerCase()}`)
+	);
+
+	const toInsert = DEFAULT_CATEGORIES.filter(
+		(def) => !existingSet.has(`${def.kind}:${def.name.trim().toLowerCase()}`)
+	);
+
+	if (toInsert.length === 0) {
+		return 0;
+	}
+
+	const now = new Date().toISOString();
+	const records = toInsert.map((item) => ({
+		id: crypto.randomUUID(),
+		userId,
+		name: item.name,
+		kind: item.kind,
+		icon: null,
+		color: item.color,
+		archived: false,
+		createdAt: now
+	}));
+
+	await db.insert(categories).values(records);
+
+	return records.length;
 }
