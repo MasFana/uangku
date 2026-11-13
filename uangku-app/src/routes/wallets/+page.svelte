@@ -28,13 +28,12 @@
 </svelte:head>
 
 <div class="space-y-6">
+	<h1 class="sr-only">Dompet & Rekening</h1>
+
 	<!-- Page Header -->
 	<div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
 		<div>
-			<h1 class="text-2xl sm:text-3xl font-black tracking-tight text-content">
-				Dompet & Rekening
-			</h1>
-			<p class="text-sm font-semibold text-content-muted mt-0.5">
+			<p class="text-sm font-semibold text-content-muted">
 				Kelola rekening bank, uang tunai, dan dompet digital tempat Anda menyimpan uang.
 			</p>
 		</div>

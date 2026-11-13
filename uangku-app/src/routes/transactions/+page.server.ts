@@ -4,38 +4,75 @@ import {
 	createTransaction,
 	updateTransaction,
 	deleteTransaction,
-	createTransfer
+	createTransfer,
+	getTransactionDayTotals,
+	checkHasAnyTransaction
 } from '$lib/server/services/transactions';
 import { listWallets } from '$lib/server/services/wallets';
 import { listCategories } from '$lib/server/services/categories';
+import { resolveTransactionPeriod } from '$lib/server/period';
 import { fail } from '@sveltejs/kit';
 
 export const load: PageServerLoad = async (event) => {
 	const url = event.url;
+	const periodParam = url.searchParams.get('period') || undefined;
+	const startDateParam = url.searchParams.get('startDate') || undefined;
+	const endDateParam = url.searchParams.get('endDate') || undefined;
+
+	const resolved = resolveTransactionPeriod(periodParam, startDateParam, endDateParam);
+
 	const walletId = url.searchParams.get('walletId') || undefined;
 	const categoryId = url.searchParams.get('categoryId') || undefined;
 	const typeParam = url.searchParams.get('type') || undefined;
-	const type = typeParam === 'income' || typeParam === 'expense' || typeParam === 'transfer' ? typeParam : undefined;
-	const startDate = url.searchParams.get('startDate') || undefined;
-	const endDate = url.searchParams.get('endDate') || undefined;
+	const type =
+		typeParam === 'income' || typeParam === 'expense' || typeParam === 'transfer'
+			? typeParam
+			: undefined;
+
 	const limitParam = parseInt(url.searchParams.get('limit') || '20', 10);
 	const limit = Math.min(Math.max(limitParam, 5), 100);
 	const cursor = url.searchParams.get('cursor') || undefined;
 
+	// Use resolved startDate and endDate if period is not 'all'
+	const effectiveFrom = resolved.startDate || undefined;
+	const effectiveTo = resolved.endDate || undefined;
+
 	try {
-		const [txResult, wallets, categories] = await Promise.all([
+		const [txResult, wallets, categories, hasAny] = await Promise.all([
 			listTransactions(event, {
 				walletId,
 				categoryId,
 				type,
-				startDate,
-				endDate,
+				from: effectiveFrom,
+				to: effectiveTo,
 				limit,
 				cursor
 			}),
 			listWallets(event, false),
-			listCategories(event, { includeArchived: false })
+			listCategories(event, { includeArchived: false }),
+			checkHasAnyTransaction(event)
 		]);
+
+		// Extract unique UTC dates (YYYY-MM-DD) appearing on the loaded page
+		const pageDatesSet = new Set<string>();
+		for (const tx of txResult.items) {
+			const d = tx.occurredAt.slice(0, 10);
+			if (/^\d{4}-\d{2}-\d{2}$/.test(d)) {
+				pageDatesSet.add(d);
+			}
+		}
+
+		const pageDates = Array.from(pageDatesSet);
+
+		// Aggregate day totals for these specific dates
+		const dayTotals =
+			pageDates.length > 0
+				? await getTransactionDayTotals(event, pageDates, {
+						walletId,
+						categoryId,
+						type
+					})
+				: [];
 
 		return {
 			transactions: txResult.items,
@@ -44,12 +81,17 @@ export const load: PageServerLoad = async (event) => {
 			wallets,
 			categories,
 			filters: {
+				period: resolved.period,
+				label: resolved.label,
+				startDate: resolved.startDate,
+				endDate: resolved.endDate,
 				walletId: walletId || '',
 				categoryId: categoryId || '',
-				type: type || '',
-				startDate: startDate || '',
-				endDate: endDate || ''
-			}
+				type: type || ''
+			},
+			periodNav: resolved.periodNav,
+			dayTotals,
+			hasAnyTransaction: hasAny
 		};
 	} catch (err: unknown) {
 		const message = err instanceof Error ? err.message : 'Gagal memuat transaksi';
@@ -59,7 +101,18 @@ export const load: PageServerLoad = async (event) => {
 			hasMore: false,
 			wallets: [],
 			categories: [],
-			filters: { walletId: '', categoryId: '', type: '', startDate: '', endDate: '' },
+			filters: {
+				period: resolved.period,
+				label: resolved.label,
+				startDate: resolved.startDate,
+				endDate: resolved.endDate,
+				walletId: walletId || '',
+				categoryId: categoryId || '',
+				type: type || ''
+			},
+			periodNav: resolved.periodNav,
+			dayTotals: [],
+			hasAnyTransaction: false,
 			error: message
 		};
 	}
@@ -137,9 +190,8 @@ export const actions: Actions = {
 				walletId,
 				categoryId,
 				amount,
-				type,
-				occurredAt: occurredAtFrom(date),
-				note
+				note,
+				occurredAt: occurredAtFrom(date)
 			});
 			return { success: true };
 		} catch (err: unknown) {

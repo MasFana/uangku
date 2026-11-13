@@ -44,12 +44,11 @@
 </svelte:head>
 
 <div class="space-y-6">
+	<h1 class="sr-only">Analisis & Laporan</h1>
+
 	<!-- Header Page -->
 	<div>
-		<h1 class="text-2xl sm:text-3xl font-black tracking-tight text-content">
-			Analisis & Laporan
-		</h1>
-		<p class="text-sm font-semibold text-content-muted mt-0.5">
+		<p class="text-sm font-semibold text-content-muted">
 			Visualisasi arus kas, rasio pengeluaran per kategori, dan kinerja dompet Anda.
 		</p>
 	</div>

@@ -12,11 +12,10 @@
 </svelte:head>
 
 <div class="space-y-6 max-w-xl mx-auto">
+	<h1 class="sr-only">Pengaturan Akun</h1>
+
 	<div>
-		<h1 class="text-2xl sm:text-3xl font-black tracking-tight text-content">
-			Pengaturan Akun
-		</h1>
-		<p class="text-sm font-semibold text-content-muted mt-0.5">
+		<p class="text-sm font-semibold text-content-muted">
 			Kelola akun dan preferensi aplikasi pencatatan keuangan Anda.
 		</p>
 	</div>

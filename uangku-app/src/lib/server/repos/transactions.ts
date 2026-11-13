@@ -1,4 +1,4 @@
-import { eq, and, desc, lt, gte, lte, or } from 'drizzle-orm';
+import { eq, and, desc, lt, gte, lte, or, inArray, sql } from 'drizzle-orm';
 import type { AppDatabase } from '../db/client';
 import { transactions, type Transaction, type TransactionType } from '../db/schema';
 import { wallets } from '../db/schema';
@@ -39,6 +39,14 @@ export interface ListTransactionsResult {
 	items: Transaction[];
 	nextCursor: string | null;
 	hasMore: boolean;
+}
+
+export interface DayTotalResult {
+	date: string; // 'YYYY-MM-DD'
+	income: number;
+	expense: number;
+	net: number;
+	count: number;
 }
 
 export class TransactionsRepo {
@@ -104,6 +112,79 @@ export class TransactionsRepo {
 		return { items, nextCursor, hasMore };
 	}
 
+	/**
+	 * Aggregates daily income, expense, net and count for given UTC dates (YYYY-MM-DD).
+	 * Transfer is EXCLUDED from income, expense, and net, but COUNTED in count.
+	 * Filters by optional walletId, categoryId, and type to match current query view.
+	 */
+	async getDayTotals(
+		userId: string,
+		dates: string[],
+		filter: { walletId?: string; categoryId?: string; type?: TransactionType } = {}
+	): Promise<DayTotalResult[]> {
+		if (dates.length === 0) {
+			return [];
+		}
+
+		const dayExpr = sql<string>`substr(${transactions.occurredAt}, 1, 10)`;
+
+		const conditions = [
+			eq(transactions.userId, userId),
+			inArray(dayExpr, dates)
+		];
+
+		if (filter.walletId) {
+			conditions.push(eq(transactions.walletId, filter.walletId));
+		}
+		if (filter.categoryId) {
+			conditions.push(eq(transactions.categoryId, filter.categoryId));
+		}
+		if (filter.type) {
+			conditions.push(eq(transactions.type, filter.type));
+		}
+
+		const incomeExpr = sql<number>`coalesce(sum(case when ${transactions.type} = 'income' then ${transactions.amount} else 0 end), 0)`;
+		const expenseExpr = sql<number>`coalesce(sum(case when ${transactions.type} = 'expense' then ${transactions.amount} else 0 end), 0)`;
+		const countExpr = sql<number>`count(*)`;
+
+		const rows = await this.db
+			.select({
+				date: dayExpr,
+				income: incomeExpr,
+				expense: expenseExpr,
+				count: countExpr
+			})
+			.from(transactions)
+			.where(and(...conditions))
+			.groupBy(dayExpr);
+
+		return rows.map((r) => {
+			const income = Number(r.income) || 0;
+			const expense = Number(r.expense) || 0;
+			const count = Number(r.count) || 0;
+			return {
+				date: r.date,
+				income,
+				expense,
+				net: income - expense,
+				count
+			};
+		});
+	}
+
+	/**
+	 * Checks if user has at least one transaction in database (unfiltered).
+	 */
+	async hasAnyTransaction(userId: string): Promise<boolean> {
+		const [first] = await this.db
+			.select({ id: transactions.id })
+			.from(transactions)
+			.where(eq(transactions.userId, userId))
+			.limit(1);
+
+		return Boolean(first);
+	}
+
 	async getById(userId: string, id: string): Promise<Transaction | null> {
 		const [tx] = await this.db
 			.select()
@@ -149,19 +230,21 @@ export class TransactionsRepo {
 			throw new Error('Transaction amount must be positive integer');
 		}
 
-		const patch: Partial<typeof transactions.$inferInsert> = {
-			updatedAt: new Date().toISOString()
+		const now = new Date().toISOString();
+		const values: Partial<typeof transactions.$inferInsert> = {
+			updatedAt: now
 		};
-		if (input.walletId !== undefined) patch.walletId = input.walletId;
-		if (input.categoryId !== undefined) patch.categoryId = input.categoryId;
-		if (input.amount !== undefined) patch.amount = Math.trunc(input.amount);
-		if (input.note !== undefined) patch.note = input.note ? input.note.trim() : null;
-		if (input.occurredAt !== undefined) patch.occurredAt = input.occurredAt;
-		if (input.receiptKey !== undefined) patch.receiptKey = input.receiptKey;
+
+		if (input.walletId !== undefined) values.walletId = input.walletId;
+		if (input.categoryId !== undefined) values.categoryId = input.categoryId;
+		if (input.amount !== undefined) values.amount = Math.trunc(input.amount);
+		if (input.note !== undefined) values.note = input.note ? input.note.trim() : null;
+		if (input.occurredAt !== undefined) values.occurredAt = input.occurredAt;
+		if (input.receiptKey !== undefined) values.receiptKey = input.receiptKey;
 
 		const [updated] = await this.db
 			.update(transactions)
-			.set(patch)
+			.set(values)
 			.where(and(eq(transactions.userId, userId), eq(transactions.id, id)))
 			.returning();
 
@@ -169,34 +252,29 @@ export class TransactionsRepo {
 	}
 
 	async delete(userId: string, id: string): Promise<boolean> {
-		const res = await this.db
+		const [deleted] = await this.db
 			.delete(transactions)
 			.where(and(eq(transactions.userId, userId), eq(transactions.id, id)))
 			.returning({ id: transactions.id });
 
-		return res.length > 0;
+		return Boolean(deleted);
 	}
 
-	/**
-	 * Creates a transfer between two user-owned wallets.
-	 * Persisted as 1 transaction row (type=transfer, walletId=source, transferWalletId=target).
-	 * Atomically verifies both wallets belong to the user using D1 batch.
-	 */
 	async transfer(
 		userId: string,
 		input: {
 			sourceWalletId: string;
 			targetWalletId: string;
 			amount: number;
-			note?: string | null;
 			occurredAt?: string;
+			note?: string | null;
 		}
 	): Promise<Transaction> {
 		if (input.amount <= 0) {
 			throw new Error('Transfer amount must be positive integer');
 		}
 		if (input.sourceWalletId === input.targetWalletId) {
-			throw new Error('Source and target wallets must be different');
+			throw new Error('Cannot transfer to the same wallet');
 		}
 
 		// Verify both wallets belong to user

@@ -1,4 +1,8 @@
-import { TransactionsRepo, type ListTransactionsResult } from '../repos/transactions';
+import {
+	TransactionsRepo,
+	type ListTransactionsResult,
+	type DayTotalResult
+} from '../repos/transactions';
 import {
 	CreateTransactionSchema,
 	UpdateTransactionSchema,
@@ -9,6 +13,7 @@ import {
 import type { AppEvent } from '../types';
 import { assertUser } from '../types';
 import { invalidateDashboard } from '../cache';
+import type { TransactionType } from '../db/schema';
 
 export async function listTransactions(
 	event: AppEvent,
@@ -63,4 +68,20 @@ export async function createTransfer(event: AppEvent, input: unknown) {
 	const transfer = await repo.transfer(userId, validated);
 	await invalidateDashboard(event, userId);
 	return transfer;
+}
+
+export async function getTransactionDayTotals(
+	event: AppEvent,
+	dates: string[],
+	filter: { walletId?: string; categoryId?: string; type?: TransactionType } = {}
+): Promise<DayTotalResult[]> {
+	const { userId, db } = assertUser(event);
+	const repo = new TransactionsRepo(db);
+	return repo.getDayTotals(userId, dates, filter);
+}
+
+export async function checkHasAnyTransaction(event: AppEvent): Promise<boolean> {
+	const { userId, db } = assertUser(event);
+	const repo = new TransactionsRepo(db);
+	return repo.hasAnyTransaction(userId);
 }

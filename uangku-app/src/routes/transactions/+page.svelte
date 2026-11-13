@@ -43,29 +43,14 @@
 </svelte:head>
 
 <div class="space-y-6">
+	<h1 class="sr-only">Riwayat Transaksi</h1>
+
 	<!-- Page Header -->
 	<div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
 		<div>
-			<h1 class="text-2xl sm:text-3xl font-black tracking-tight text-content">
-				Riwayat Transaksi
-			</h1>
-			<p class="text-sm font-semibold text-content-muted mt-0.5">
+			<p class="text-sm font-semibold text-content-muted">
 				Pantau seluruh alur kas masuk, keluar, dan transfer antar dompet Anda.
 			</p>
-		</div>
-
-		<div class="flex items-center gap-2">
-			<Button
-				variant="primary"
-				size="md"
-				onclick={() => {
-					transactionKind = 'expense';
-					editingTransaction = null;
-					showCreateModal = true;
-				}}
-			>
-				+ Catat Transaksi
-			</Button>
 		</div>
 	</div>
 
