@@ -1,7 +1,22 @@
 {
-	"name": "uangku-app",
+	"name": "uangku",
 	"version": "0.0.1",
 	"private": true,
+	"description": "Personal finance tracker for Indonesian rupiah, built with SvelteKit and Cloudflare Workers.",
+	"keywords": [
+		"sveltekit",
+		"svelte",
+		"cloudflare-workers",
+		"d1",
+		"drizzle-orm",
+		"personal-finance",
+		"idr"
+	],
+	"license": "MIT",
+	"repository": {
+		"type": "git",
+		"url": "https://github.com/MasFana/uangku.git"
+	},
 	"type": "module",
 	"imports": {
 		"#lib": "./src/lib/index.js",
