@@ -9,7 +9,9 @@ A personal finance tracker for Indonesian rupiah, built as one SvelteKit app on 
 
 Test deployment: https://uangku.fanaapi425.workers.dev. Register with any email address. Do not enter real financial data there, it is a machine used for smoke tests.
 
-<img src="docs/screenshots/home-light.png" alt="Uangku home screen on a phone: total balance, this month's cash flow, and the latest transactions" width="320">
+<img src="docs/screenshots/home-light.png" alt="Uangku home screen on a phone: total balance, this month's cash flow, and the latest transactions" width="320"> <img src="docs/screenshots/home-dark.png" alt="The same home screen in the dark theme" width="320">
+
+The screenshots above come from the test deployment with sample data in it.
 
 ## What it does
 
