@@ -89,17 +89,19 @@
 		new Map((data.dayTotals || []).map((dt) => [dt.date, dt]))
 	);
 
+	type TxRow = PageData['transactions'][number];
+
 	// Group transactions by date string (YYYY-MM-DD)
 	interface GroupedDay {
 		date: string;
-		items: typeof data.transactions;
+		items: TxRow[];
 		totalNet: number;
 		totalCount: number;
 	}
 
 	const groupedDays = $derived.by<GroupedDay[]>(() => {
 		const groups: GroupedDay[] = [];
-		const groupMap = new Map<string, typeof data.transactions>();
+		const groupMap = new Map<string, TxRow[]>();
 
 		for (const tx of data.transactions || []) {
 			const dateKey = tx.occurredAt.slice(0, 10);
@@ -442,7 +444,6 @@
 								<!-- Kiri: Badge + Catatan/Kategori + Dompet -->
 								<div class="flex items-center gap-2.5 min-w-0">
 									<Badge
-										size="sm"
 										variant={tx.type === 'income' ? 'income' : tx.type === 'expense' ? 'expense' : 'neutral'}
 										class="shrink-0"
 									>
