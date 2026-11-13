@@ -110,7 +110,7 @@ npm run deploy
 
 Stated plainly, because a README that promises features the code does not have is worse than a short README:
 
-- Receipt photos to R2. The `RECEIPTS` binding is commented out in `wrangler.jsonc` while R2 stays disabled on the account.
+- Receipt photos to R2. The `RECEIPTS` binding was removed from `wrangler.jsonc` while R2 stays disabled on the original account.
 - AI monthly insight and receipt scanning. The secrets `AI_BASE_URL`, `AI_API_KEY`, and `AI_MODEL` are reserved in `.dev.vars.example`, and no code reads them yet.
 - Budgets, tags with D1 FTS5 search, savings goals, recurring entries, multi currency, and offline PWA support.
 - A custom domain. The app runs on `workers.dev`.
