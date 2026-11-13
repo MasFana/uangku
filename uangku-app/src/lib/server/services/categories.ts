@@ -74,7 +74,12 @@ export async function seedDefaultCategories(event: AppEvent): Promise<number> {
 		createdAt: now
 	}));
 
-	await db.insert(categories).values(records);
+	// Chunk inserts to prevent exceeding SQLite/D1 SQL variable limit
+	const CHUNK_SIZE = 5;
+	for (let i = 0; i < records.length; i += CHUNK_SIZE) {
+		const chunk = records.slice(i, i + CHUNK_SIZE);
+		await db.insert(categories).values(chunk);
+	}
 
 	return records.length;
 }
