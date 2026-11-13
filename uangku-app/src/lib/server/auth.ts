@@ -5,6 +5,7 @@ import type { RequestEvent } from '@sveltejs/kit';
 import type { D1Database } from '@cloudflare/workers-types';
 import { createDb } from './db/client';
 import * as schema from './db/schema';
+import { seedDefaultsForUser } from './services/categories';
 
 export interface AuthEnv {
 	APP_DB: D1Database;
@@ -26,6 +27,26 @@ export function createAuth(env: AuthEnv, event?: RequestEvent) {
 				verification: schema.verifications
 			}
 		}),
+		databaseHooks: {
+			user: {
+				create: {
+					after: async (user) => {
+						try {
+							await seedDefaultsForUser(db, user.id);
+						} catch (error: unknown) {
+							const message = error instanceof Error ? error.message : String(error);
+							console.log(
+								JSON.stringify({
+									event: 'seed_default_categories_failed',
+									userId: user.id,
+									message
+								})
+							);
+						}
+					}
+				}
+			}
+		},
 		secret: env.BETTER_AUTH_SECRET ?? 'uangku-dev-secret-minimum-32-chars-long',
 		baseURL: env.BETTER_AUTH_URL,
 		emailAndPassword: {
@@ -37,4 +58,3 @@ export function createAuth(env: AuthEnv, event?: RequestEvent) {
 }
 
 export type AuthInstance = ReturnType<typeof createAuth>;
-

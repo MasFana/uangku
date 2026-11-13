@@ -4,6 +4,7 @@ import type { AppEvent } from '../types';
 import { assertUser } from '../types';
 import { categories, type CategoryKind } from '../db/schema';
 import { DEFAULT_CATEGORIES } from '../defaults';
+import type { AppDatabase } from '../db/client';
 
 export async function listCategories(
 	event: AppEvent,
@@ -39,13 +40,12 @@ export async function archiveCategory(event: AppEvent, id: string) {
 }
 
 /**
- * Seeds default categories for the current user if not already present.
+ * Seeds default categories for a user directly using database instance.
  * Matches existing active categories by (kind, case-insensitive name).
  * Idempotent: safe to run multiple times without creating duplicates.
  * Returns the count of newly inserted categories.
  */
-export async function seedDefaultCategories(event: AppEvent): Promise<number> {
-	const { userId, db } = assertUser(event);
+export async function seedDefaultsForUser(db: AppDatabase, userId: string): Promise<number> {
 	const repo = new CategoriesRepo(db);
 
 	// Read existing active categories for user
@@ -82,4 +82,13 @@ export async function seedDefaultCategories(event: AppEvent): Promise<number> {
 	}
 
 	return records.length;
+}
+
+/**
+ * Seeds default categories for the current user if not already present.
+ * Thin wrapper around seedDefaultsForUser.
+ */
+export async function seedDefaultCategories(event: AppEvent): Promise<number> {
+	const { userId, db } = assertUser(event);
+	return seedDefaultsForUser(db, userId);
 }
