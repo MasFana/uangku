@@ -8,7 +8,7 @@ Tanggal review: 2026-11-12. Semua angka di bawah **dijalankan ulang oleh orchest
 | `npm run check` (svelte-check) | 0 error, 0 warning | dijalankan sendiri |
 | `npm run build` (adapter-cloudflare) | sukses, `✔ done` | output `.svelte-kit/cloudflare` |
 | `npx vitest run` | **35 test lulus** (3 berkas, 68 s) | termasuk 4 uji isolasi tenant lewat Miniflare D1 |
-| `/root/.claude/skills/impeccable/scripts/impeccable detect --json src/` | `[]` (nol temuan) | pertama kali engine diunduh, jalankan bisa >2 menit |
+| `impeccable detect --json src/` | `[]` (nol temuan) | pertama kali engine diunduh, jalankan bisa >2 menit |
 | `wrangler d1 execute APP_DB --local` | `wallets=3, categories=7, transactions=38` | seed demo lokal nyata masuk |
 
 Catatan jujur: perintah detector yang diberikan di brief awal (`npx impeccable detect src/`) **tidak valid** dan hasil "0 temuan" versi pertama dari UI tidak terbukti. Setelah perintah diperbaiki, hasilnya tetap nol temuan — angka di tabel ini yang sahih.

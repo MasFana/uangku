@@ -5,7 +5,7 @@ Orchestrator: **Pi** (sesi utama). Semua laporan task ditulis dalam Bahasa Indon
 ## Aturan umum (semua role wajib baca)
 - Baca `AGENTS.md`, `PRODUCT.md`, dan **`docs/DECISIONS.md`** (keputusan tetap: tema, pola kode, font, motion) sebelum menyentuh kode. Spec kerja: `docs/specs/fase1-prd.md` + `docs/specs/tasks.md`.
 - **Bahasa**: teks UI + commit message Indonesia; nama variabel/fungsi/komentar kode Inggris.
-- **Setor hasil**: commit kecil langsung ke `main` (repo `/home/public/pocket/uangku`), pesan commit `tipe(scope): deskripsi`. Jangan push (tidak ada remote).
+- **Setor hasil**: commit kecil langsung ke `main` (root repo ini), pesan commit `tipe(scope): deskripsi`. Jangan push.
 - **Commit SEGERA setelah pekerjaanmu berfungsi.** Jangan pernah meninggalkan pekerjaan selesai sebagai berkas belum ter-commit lalu melanjutkan tugas lain. Ada satu pohon kerja bersama: berkas yang belum di-commit bisa hilang karena aksi role lain (kejadian nyata: 3 berkas uji + 2 perbaikan hilang).
 - **DILARANG di pohon kerja bersama**: `git clean`, `git reset`, `git checkout -- .`, `git restore`, `git stash`, `git checkout <commit>`, atau perintah lain yang menghapus/mengembalikan berkas orang lain. Kalau ragu, tanya orchestrator dulu. Tidak ada jalan pintas untuk membatalkan perubahanmu sendiri selain sunting ulang berkasnya.
 - **Jangan** `wrangler deploy` / `d1 migrations apply --remote` (butuh kredensial; task terpisah bila token tersedia). Lokal OK: `--local`, `vite dev`, `vitest`, `vite build`.
@@ -56,7 +56,7 @@ Orchestrator: **Pi** (sesi utama). Semua laporan task ditulis dalam Bahasa Indon
 ### qa-review
 1. `vitest.config.ts`: `defineWorkersConfig` + `wrangler.configPath`, pool workers.
 2. `tests/`: kalkulasi saldo (happy + edge: dompet tanpa transaksi, transfer keluar>masuk, transaksi masa depan), scope `user_id`, validasi Valibot.
-3. `scripts/check.sh`: `npm run check` + `vitest run` + `/root/.claude/skills/impeccable/scripts/impeccable detect --json src/` — exit non-zero bila gagal.
+3. `scripts/check.sh`: `npm run check` + `npm run build` + `impeccable detect --json src/` (opsional, dilewati bila tidak ada di `PATH`) + `npm test` — exit non-zero bila gagal.
 4. `.github/workflows/ci.yml`: svelte-check → test → build (tanpa deploy).
 5. `docs/qa/checklist.md`: kriteria terima Fase 1 dari `fase1-prd.md` §7 sebagai daftar periksa.
 

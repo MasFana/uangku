@@ -19,8 +19,8 @@ echo "=== [2/4] Build (SvelteKit + Cloudflare Adapter) ==="
 npm run build
 
 echo "=== [3/4] Impeccable Design Smell Detection ==="
-IMPECCABLE_BIN="${IMPECCABLE_BIN:-/root/.claude/skills/impeccable/scripts/impeccable}"
-if [ -x "$IMPECCABLE_BIN" ]; then
+IMPECCABLE_BIN="${IMPECCABLE_BIN:-impeccable}"
+if command -v "$IMPECCABLE_BIN" >/dev/null 2>&1; then
 	ISSUES="$("$IMPECCABLE_BIN" detect --json src/)"
 	echo "Impeccable results: $ISSUES"
 	if [ "$ISSUES" != "[]" ] && [ -n "$ISSUES" ]; then
@@ -32,8 +32,9 @@ else
 fi
 
 echo "=== [4/4] Vitest Suite ==="
-if [ -f "/usr/local/lib/libresinit.so" ]; then
-	export LD_PRELOAD="/usr/local/lib/libresinit.so"
+# On musl hosts workerd can need a resolver shim. Pass its path in UANGKU_LD_PRELOAD.
+if [ -n "${UANGKU_LD_PRELOAD:-}" ]; then
+	export LD_PRELOAD="$UANGKU_LD_PRELOAD"
 fi
 npm test
 
