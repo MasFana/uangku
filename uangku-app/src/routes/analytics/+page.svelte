@@ -89,7 +89,7 @@
 					type="button"
 					variant="outline"
 					size="sm"
-					class="min-h-[38px] sm:min-h-[40px] px-2.5 sm:px-3 relative font-bold text-xs"
+					class="min-h-[44px] px-2.5 sm:px-3 relative font-bold text-xs"
 					onclick={() => (showFilterSheet = true)}
 				>
 					<svg class="w-4 h-4 mr-1 inline-block" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.25" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">

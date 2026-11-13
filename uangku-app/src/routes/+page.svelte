@@ -28,22 +28,22 @@
 	<title>Dasbor — Uangku</title>
 </svelte:head>
 
-<div class="space-y-6">
+<div class="space-y-3">
 	<!-- Hero: Total Saldo Bersih -->
-	<Card variant="brand" shadow="lg" class="p-6">
-		<div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+	<Card variant="brand" shadow="lg" class="p-4">
+		<div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
 			<div>
-				<p class="text-xs font-bold uppercase tracking-wider text-brand-foreground/90 mb-1">
+				<p class="text-xs font-bold uppercase tracking-wider text-brand-foreground/90 mb-0.5">
 					Total Saldo Bersih
 				</p>
-				<h1 class="text-3xl sm:text-4xl font-black font-mono tracking-tight tabular-nums text-brand-foreground">
+				<h1 class="text-3xl font-black font-mono tracking-tight tabular-nums text-brand-foreground">
 					{formatRupiah(summary.totalBalance ?? 0)}
 				</h1>
 			</div>
 			<div class="flex items-center gap-2">
 				<a
 					href="/transactions"
-					class="inline-flex items-center justify-center min-h-[44px] px-4 py-2.5 rounded-md border-2 border-border bg-surface text-content font-bold text-sm shadow-hard-sm hover:bg-surface-subtle active:translate-x-[2px] active:translate-y-[2px] active:shadow-none transition-all duration-150"
+					class="inline-flex items-center justify-center min-h-[44px] px-4 py-2 rounded-md border-2 border-border bg-surface text-content font-bold text-sm shadow-hard-sm hover:bg-surface-subtle active:translate-x-[2px] active:translate-y-[2px] active:shadow-none transition-all duration-150"
 				>
 					+ Transaksi Baru
 				</a>
@@ -51,16 +51,16 @@
 		</div>
 
 		<!-- Monthly Cashflow -->
-		<div class="grid grid-cols-2 gap-3 mt-6 pt-5 border-t-2 border-border/20">
+		<div class="grid grid-cols-2 gap-3 mt-4 pt-3 border-t-2 border-border/20">
 			<div>
 				<p class="text-xs font-bold text-brand-foreground/90 mb-0.5">Pemasukan Bulan Ini</p>
-				<p class="text-lg sm:text-xl font-bold font-mono tabular-nums text-brand-foreground">
+				<p class="text-base sm:text-lg font-bold font-mono tabular-nums text-brand-foreground">
 					+{formatRupiah(summary.currentMonth?.income ?? 0)}
 				</p>
 			</div>
 			<div>
 				<p class="text-xs font-bold text-brand-foreground/90 mb-0.5">Pengeluaran Bulan Ini</p>
-				<p class="text-lg sm:text-xl font-bold font-mono tabular-nums text-brand-foreground">
+				<p class="text-base sm:text-lg font-bold font-mono tabular-nums text-brand-foreground">
 					-{formatRupiah(summary.currentMonth?.expense ?? 0)}
 				</p>
 			</div>
@@ -68,8 +68,8 @@
 	</Card>
 
 	<!-- Grafik Tren 6 Bulan (Custom SVG) -->
-	<Card class="p-6">
-		<div class="flex items-center justify-between mb-4">
+	<Card class="p-4">
+		<div class="flex items-center justify-between mb-3">
 			<div>
 				<h2 class="text-base font-black text-content tracking-tight">Tren Arus Kas 6 Bulan</h2>
 			</div>
@@ -84,9 +84,9 @@
 		<CashflowChart data={summary.sixMonthTrend ?? []} height={180} />
 	</Card>
 
-	<div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+	<div class="grid grid-cols-1 lg:grid-cols-3 gap-3">
 		<!-- Dompet Saya -->
-		<div class="lg:col-span-1 space-y-3">
+		<div class="lg:col-span-1 space-y-2">
 			<div class="flex items-center justify-between">
 				<h2 class="text-base font-black tracking-tight text-content">
 					Dompet ({wallets.length})
@@ -109,7 +109,7 @@
 			{:else}
 				<div class="space-y-2">
 					{#each wallets as wallet}
-						<div class="p-3.5 rounded-lg border-2 border-border bg-surface shadow-hard-xs flex items-center justify-between">
+						<div class="p-3 rounded-lg border-2 border-border bg-surface shadow-hard-xs flex items-center justify-between">
 							<div>
 								<p class="text-sm font-bold text-content">{wallet.name}</p>
 								<span class="text-xs text-content-muted capitalize">{wallet.type}</span>
@@ -124,7 +124,7 @@
 		</div>
 
 		<!-- Breakdown Kategori Pengeluaran -->
-		<div class="lg:col-span-2 space-y-3">
+		<div class="lg:col-span-2 space-y-2">
 			<div class="flex items-center justify-between">
 				<h2 class="text-base font-black tracking-tight text-content">
 					Pengeluaran per Kategori
@@ -145,7 +145,7 @@
 					actionHref="/transactions"
 				/>
 			{:else}
-				<Card class="p-4 space-y-3">
+				<Card class="p-3 space-y-2.5">
 					{#each summary.categoryBreakdown as cat}
 						{@const percentage = totalExpense > 0 ? Math.round((cat.total / totalExpense) * 100) : 0}
 						<div class="space-y-1">
@@ -156,7 +156,7 @@
 								</span>
 							</div>
 							<!-- Progress bar brutalist -->
-							<div class="w-full h-2.5 rounded-full border border-border bg-surface-subtle overflow-hidden">
+							<div class="w-full h-2 rounded-full border border-border bg-surface-subtle overflow-hidden">
 								<div
 									class="h-full bg-expense"
 									style="width: {Math.min(percentage, 100)}%;"
@@ -170,9 +170,9 @@
 	</div>
 
 	<!-- 10 Transaksi Terakhir -->
-	<section aria-labelledby="heading-dashboard-tx" class="space-y-3">
+	<section aria-labelledby="heading-dashboard-tx" class="space-y-2">
 		<div class="flex items-center justify-between">
-			<h2 id="heading-dashboard-tx" class="text-lg font-black tracking-tight text-content">
+			<h2 id="heading-dashboard-tx" class="text-base sm:text-lg font-black tracking-tight text-content">
 				Transaksi Terakhir
 			</h2>
 			{#if hasTransactions}
@@ -195,9 +195,9 @@
 		{:else}
 			<div class="space-y-2">
 				{#each summary.recentTransactions as tx}
-					<div class="p-3.5 rounded-lg border-2 border-border bg-surface shadow-hard-xs flex items-center justify-between gap-3">
+					<div class="p-3 rounded-lg border-2 border-border bg-surface shadow-hard-xs flex items-center justify-between gap-3">
 						<div class="min-w-0 flex-1">
-							<div class="flex items-center gap-2 mb-1">
+							<div class="flex items-center gap-2 mb-0.5">
 								<Badge variant={tx.type === 'income' ? 'income' : tx.type === 'expense' ? 'expense' : 'neutral'}>
 									{tx.type === 'income' ? 'Pemasukan' : tx.type === 'expense' ? 'Pengeluaran' : 'Transfer'}
 								</Badge>

@@ -149,7 +149,7 @@
 				{#if data.periodNav.prev}
 					<a
 						href={buildPeriodUrl(data.periodNav.prev)}
-						class="w-9 h-9 sm:w-10 sm:h-10 shrink-0 rounded-md border-2 border-border bg-surface hover:bg-surface-subtle flex items-center justify-center font-black text-base shadow-hard-xs transition-all focus-visible:outline-2"
+						class="w-11 h-11 shrink-0 rounded-md border-2 border-border bg-surface hover:bg-surface-subtle flex items-center justify-center font-black text-base shadow-hard-xs transition-all focus-visible:outline-2"
 						aria-label="Periode sebelumnya"
 						title="Periode sebelumnya"
 					>
@@ -157,7 +157,7 @@
 					</a>
 				{:else}
 					<span
-						class="w-9 h-9 sm:w-10 sm:h-10 shrink-0 rounded-md border-2 border-border/30 text-content-muted flex items-center justify-center font-black text-base opacity-40 cursor-not-allowed"
+						class="w-11 h-11 shrink-0 rounded-md border-2 border-border/30 text-content-muted flex items-center justify-center font-black text-base opacity-40 cursor-not-allowed"
 						aria-hidden="true"
 					>
 						‹
@@ -171,7 +171,7 @@
 				{#if data.periodNav.next}
 					<a
 						href={buildPeriodUrl(data.periodNav.next)}
-						class="w-9 h-9 sm:w-10 sm:h-10 shrink-0 rounded-md border-2 border-border bg-surface hover:bg-surface-subtle flex items-center justify-center font-black text-base shadow-hard-xs transition-all focus-visible:outline-2"
+						class="w-11 h-11 shrink-0 rounded-md border-2 border-border bg-surface hover:bg-surface-subtle flex items-center justify-center font-black text-base shadow-hard-xs transition-all focus-visible:outline-2"
 						aria-label="Periode berikutnya"
 						title="Periode berikutnya"
 					>
@@ -179,7 +179,7 @@
 					</a>
 				{:else}
 					<span
-						class="w-9 h-9 sm:w-10 sm:h-10 shrink-0 rounded-md border-2 border-border/30 text-content-muted flex items-center justify-center font-black text-base opacity-40 cursor-not-allowed"
+						class="w-11 h-11 shrink-0 rounded-md border-2 border-border/30 text-content-muted flex items-center justify-center font-black text-base opacity-40 cursor-not-allowed"
 						aria-hidden="true"
 					>
 						›
@@ -193,7 +193,7 @@
 					type="button"
 					variant="outline"
 					size="sm"
-					class="min-h-[38px] sm:min-h-[40px] px-2.5 sm:px-3 relative font-bold text-xs"
+					class="min-h-[44px] px-2.5 sm:px-3 relative font-bold text-xs"
 					onclick={() => (showFilterSheet = true)}
 				>
 					<svg class="w-4 h-4 mr-1 inline-block" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.25" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
@@ -371,7 +371,7 @@
 												editingTransaction = tx;
 												showCreateModal = false;
 											}}
-											class="px-2 py-1 text-xs font-bold rounded border border-border bg-surface hover:bg-surface-subtle transition-all min-h-[36px] min-w-[36px]"
+											class="relative after:absolute after:-inset-1 after:content-[''] px-2 py-1 text-xs font-bold rounded border border-border bg-surface hover:bg-surface-subtle transition-all min-h-[36px] min-w-[36px]"
 											aria-label="Edit transaksi"
 										>
 											Edit
@@ -383,7 +383,7 @@
 												onclick={(e) => {
 													if (!confirm('Hapus transaksi ini? Saldo dompet akan disesuaikan kembali.')) e.preventDefault();
 												}}
-												class="px-2 py-1 text-xs font-bold rounded border border-border bg-surface text-danger hover:bg-danger/10 transition-all min-h-[36px] min-w-[36px]"
+												class="relative after:absolute after:-inset-1 after:content-[''] px-2 py-1 text-xs font-bold rounded border border-border bg-surface text-danger hover:bg-danger/10 transition-all min-h-[36px] min-w-[36px]"
 												aria-label="Hapus transaksi"
 											>
 												Hapus

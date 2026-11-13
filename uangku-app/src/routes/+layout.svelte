@@ -71,7 +71,7 @@
 			<div class="flex items-center gap-3 min-w-0">
 				<a
 					href="/"
-					class="focus-visible:outline-2 focus-visible:outline-content rounded-md shrink-0"
+					class="min-w-[44px] min-h-[44px] flex items-center justify-center focus-visible:outline-2 focus-visible:outline-content rounded-md shrink-0"
 					aria-label="Uangku, beranda"
 				>
 					<Logo size="md" showText={false} />
