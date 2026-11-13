@@ -3,10 +3,13 @@
 	import Button from '$lib/components/Button.svelte';
 	import EmptyState from '$lib/components/EmptyState.svelte';
 	import CashflowChart from '$lib/components/CashflowChart.svelte';
-	import { formatRupiah, formatDateIndo } from '$lib/utils';
+	import * as Dialog from '$lib/components/ui/dialog/index.js';
+	import { formatRupiah } from '$lib/utils';
 	import type { PageData } from './$types';
 
 	let { data }: { data: PageData } = $props();
+
+	let showFilterSheet = $state(false);
 
 	const filters = $derived(data.filters);
 	const summary = $derived(data.summary);
@@ -17,6 +20,31 @@
 	const options = $derived(data.options ?? { wallets: [], categories: [] });
 
 	const hasData = $derived(summary.count > 0);
+
+	// Label rentang aktif
+	const rangeLabels: Record<string, string> = {
+		week: 'Minggu Ini',
+		month: 'Bulan Ini',
+		year: 'Tahun Ini',
+		all: 'Semua Periode',
+		custom: 'Rentang Kustom'
+	};
+	const currentRangeLabel = $derived(
+		filters.range === 'custom' && (filters.from || filters.to)
+			? `${filters.from || '...'} – ${filters.to || '...'}`
+			: rangeLabels[filters.range] || 'Bulan Ini'
+	);
+
+	// Count active filters beyond default (month, day, all type, all wallet, all cat)
+	const activeFilterCount = $derived.by(() => {
+		let count = 0;
+		if (filters.range && filters.range !== 'month') count++;
+		if (filters.granularity && filters.granularity !== 'day') count++;
+		if (filters.type && filters.type !== 'all') count++;
+		if (filters.walletId) count++;
+		if (filters.categoryId) count++;
+		return count;
+	});
 
 	// Adapt series to CashflowChart expected structure { month: string, income: number, expense: number }
 	const chartData = $derived(
@@ -43,148 +71,39 @@
 	<title>Analisis Keuangan — Uangku</title>
 </svelte:head>
 
-<div class="space-y-6">
+<div class="space-y-4">
 	<h1 class="sr-only">Analisis & Laporan</h1>
 
-	<!-- Header Page -->
-	<div>
-		<p class="text-sm font-semibold text-content-muted">
-			Visualisasi arus kas, rasio pengeluaran per kategori, dan kinerja dompet Anda.
-		</p>
-	</div>
-
-	<!-- Form Filter GET -->
-	<Card class="p-4 sm:p-5">
-		<form method="GET" class="space-y-4">
-			<!-- Preset Rentang Waktu -->
-			<div class="space-y-1.5">
-				<label for="range-select" class="text-xs font-bold text-content-muted uppercase tracking-wider block">
-					Rentang Waktu
-				</label>
-				<div class="flex flex-wrap gap-2">
-					{#each [
-						{ value: 'week', label: 'Minggu Ini' },
-						{ value: 'month', label: 'Bulan Ini' },
-						{ value: 'year', label: 'Tahun Ini' },
-						{ value: 'all', label: 'Semua' },
-						{ value: 'custom', label: 'Kustom' }
-					] as preset}
-						<button
-							type="submit"
-							name="range"
-							value={preset.value}
-							class="min-h-[44px] px-3.5 py-2 rounded-md font-bold text-xs sm:text-sm border-2 transition-all {filters.range === preset.value
-								? 'bg-brand text-brand-foreground border-border shadow-hard-xs'
-								: 'bg-surface hover:bg-surface-subtle border-border text-content'}"
-						>
-							{preset.label}
-						</button>
-					{/each}
-				</div>
+	<!-- Baris Kontrol Filter Ringkas -->
+	<Card class="p-2 sm:p-2.5">
+		<div class="flex items-center justify-between gap-2">
+			<div class="flex items-center gap-1.5 min-w-0">
+				<span class="text-xs font-bold text-content-muted shrink-0">Periode:</span>
+				<span class="font-black text-xs sm:text-sm text-content truncate">
+					{currentRangeLabel}
+				</span>
 			</div>
 
-			<!-- Filter Kustom Tanggal & Granularitas & Kategori & Dompet -->
-			<div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 pt-2 border-t-2 border-border/10">
-				{#if filters.range === 'custom'}
-					<div>
-						<label for="from" class="text-xs font-bold text-content-muted block mb-1">
-							Dari Tanggal
-						</label>
-						<input
-							type="date"
-							id="from"
-							name="from"
-							value={filters.from || ''}
-							class="w-full min-h-[44px] px-3 py-2 text-sm font-mono rounded-md border-2 border-border bg-surface text-content focus:outline-none focus:ring-2 focus:ring-content"
-						/>
-					</div>
-					<div>
-						<label for="to" class="text-xs font-bold text-content-muted block mb-1">
-							Sampai Tanggal
-						</label>
-						<input
-							type="date"
-							id="to"
-							name="to"
-							value={filters.to || ''}
-							class="w-full min-h-[44px] px-3 py-2 text-sm font-mono rounded-md border-2 border-border bg-surface text-content focus:outline-none focus:ring-2 focus:ring-content"
-						/>
-					</div>
-				{/if}
-
-				<div>
-					<label for="granularity" class="text-xs font-bold text-content-muted block mb-1">
-						Granularitas Grafik
-					</label>
-					<select
-						id="granularity"
-						name="granularity"
-						value={filters.granularity || 'day'}
-						class="w-full min-h-[44px] px-3 py-2 text-sm font-bold rounded-md border-2 border-border bg-surface text-content focus:outline-none focus:ring-2 focus:ring-content"
-					>
-						<option value="day">Harian</option>
-						<option value="week">Mingguan</option>
-						<option value="month">Bulanan</option>
-					</select>
-				</div>
-
-				<div>
-					<label for="type" class="text-xs font-bold text-content-muted block mb-1">
-						Jenis Transaksi
-					</label>
-					<select
-						id="type"
-						name="type"
-						value={filters.type || 'all'}
-						class="w-full min-h-[44px] px-3 py-2 text-sm font-bold rounded-md border-2 border-border bg-surface text-content focus:outline-none focus:ring-2 focus:ring-content"
-					>
-						<option value="all">Semua Jenis</option>
-						<option value="income">Pemasukan Saja</option>
-						<option value="expense">Pengeluaran Saja</option>
-					</select>
-				</div>
-
-				<div>
-					<label for="walletId" class="text-xs font-bold text-content-muted block mb-1">
-						Dompet
-					</label>
-					<select
-						id="walletId"
-						name="walletId"
-						value={filters.walletId || ''}
-						class="w-full min-h-[44px] px-3 py-2 text-sm font-bold rounded-md border-2 border-border bg-surface text-content focus:outline-none focus:ring-2 focus:ring-content"
-					>
-						<option value="">Semua Dompet</option>
-						{#each options.wallets as w}
-							<option value={w.id}>{w.name}</option>
-						{/each}
-					</select>
-				</div>
-
-				<div>
-					<label for="categoryId" class="text-xs font-bold text-content-muted block mb-1">
-						Kategori
-					</label>
-					<select
-						id="categoryId"
-						name="categoryId"
-						value={filters.categoryId || ''}
-						class="w-full min-h-[44px] px-3 py-2 text-sm font-bold rounded-md border-2 border-border bg-surface text-content focus:outline-none focus:ring-2 focus:ring-content"
-					>
-						<option value="">Semua Kategori</option>
-						{#each options.categories as c}
-							<option value={c.id}>{c.name} ({c.kind === 'income' ? 'Masuk' : 'Keluar'})</option>
-						{/each}
-					</select>
-				</div>
-			</div>
-
-			<div class="flex justify-end pt-2">
-				<Button type="submit" variant="primary" class="min-h-[44px]">
-					Terapkan Filter
+			<div class="flex items-center gap-1.5 shrink-0">
+				<Button
+					type="button"
+					variant="outline"
+					size="sm"
+					class="min-h-[38px] sm:min-h-[40px] px-2.5 sm:px-3 relative font-bold text-xs"
+					onclick={() => (showFilterSheet = true)}
+				>
+					<svg class="w-4 h-4 mr-1 inline-block" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.25" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+						<polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3" />
+					</svg>
+					Filter
+					{#if activeFilterCount > 0}
+						<span class="ml-1 px-1.5 py-0.2 bg-brand text-brand-foreground text-[10px] font-black rounded-full border border-border">
+							{activeFilterCount}
+						</span>
+					{/if}
 				</Button>
 			</div>
-		</form>
+		</div>
 	</Card>
 
 	{#if !hasData}
@@ -195,95 +114,92 @@
 			actionHref="/transactions?new=1"
 		/>
 	{:else}
-		<!-- Ringkasan Statistik -->
-		<div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+		<!-- Ringkasan Statistik: 2 kolom (mobile & desktop) -->
+		<div class="grid grid-cols-2 lg:grid-cols-2 gap-3 sm:gap-4">
 			<!-- Pemasukan Total -->
-			<Card class="p-5">
-				<p class="text-xs font-bold text-content-muted uppercase tracking-wider mb-1">Total Pemasukan</p>
-				<p class="text-2xl font-black font-mono text-income tabular-nums">
+			<Card class="p-3.5 sm:p-4">
+				<p class="text-[11px] font-bold text-content-muted uppercase tracking-wider mb-0.5">Total Pemasukan</p>
+				<p class="text-base sm:text-lg font-black font-mono text-income tabular-nums">
 					+{formatRupiah(summary.income)}
 				</p>
-				<p class="text-xs text-content-muted mt-2 font-medium">Periode aktif</p>
 			</Card>
 
 			<!-- Pengeluaran Total -->
-			<Card class="p-5">
-				<p class="text-xs font-bold text-content-muted uppercase tracking-wider mb-1">Total Pengeluaran</p>
-				<p class="text-2xl font-black font-mono text-danger tabular-nums">
+			<Card class="p-3.5 sm:p-4">
+				<p class="text-[11px] font-bold text-content-muted uppercase tracking-wider mb-0.5">Total Pengeluaran</p>
+				<p class="text-base sm:text-lg font-black font-mono text-danger tabular-nums">
 					-{formatRupiah(summary.expense)}
 				</p>
-				<p class="text-xs text-content-muted mt-2 font-medium">Periode aktif</p>
 			</Card>
 
-			<!-- Net Cashflow & Bandingkan Periode Lalu -->
-			<Card class="p-5">
-				<p class="text-xs font-bold text-content-muted uppercase tracking-wider mb-1">Selisih Bersih (Net)</p>
-				<p class="text-2xl font-black font-mono tabular-nums {summary.net >= 0 ? 'text-brand' : 'text-danger'}">
+			<!-- Net Cashflow -->
+			<Card class="p-3.5 sm:p-4">
+				<p class="text-[11px] font-bold text-content-muted uppercase tracking-wider mb-0.5">Selisih Bersih</p>
+				<p class="text-base sm:text-lg font-black font-mono tabular-nums {summary.net >= 0 ? 'text-brand' : 'text-danger'}">
 					{summary.net >= 0 ? '+' : '-'}{formatRupiah(Math.abs(summary.net))}
 				</p>
 				{#if netDiff}
-					<p class="text-xs font-bold mt-2 flex items-center gap-1 {netDiff.isPositive ? 'text-income' : 'text-danger'}">
-						<span aria-hidden="true">{netDiff.isPositive ? '▲ Naik' : '▼ Turun'}</span>
-						<span>{netDiff.label} dibanding periode lalu</span>
+					<p class="text-[11px] font-bold mt-1 flex items-center gap-1 {netDiff.isPositive ? 'text-income' : 'text-danger'}">
+						<span aria-hidden="true">{netDiff.isPositive ? '▲' : '▼'}</span>
+						<span>{netDiff.label} vs lalu</span>
 					</p>
-				{:else}
-					<p class="text-xs text-content-muted mt-2 font-medium">Data periode lalu tidak tersedia</p>
 				{/if}
 			</Card>
 
 			<!-- Jumlah Transaksi -->
-			<Card class="p-4 sm:p-5">
-				<p class="text-xs font-bold text-content-muted uppercase tracking-wider mb-1">Total Transaksi</p>
-				<p class="text-xl font-black font-mono text-content tabular-nums">
+			<Card class="p-3.5 sm:p-4">
+				<p class="text-[11px] font-bold text-content-muted uppercase tracking-wider mb-0.5">Total Transaksi</p>
+				<p class="text-base sm:text-lg font-black font-mono text-content tabular-nums">
 					{summary.count} transaksi
 				</p>
 			</Card>
 
 			<!-- Rata-rata per Hari -->
-			<Card class="p-4 sm:p-5">
-				<p class="text-xs font-bold text-content-muted uppercase tracking-wider mb-1">Rata-rata Pengeluaran / Hari</p>
-				<p class="text-xl font-black font-mono text-content tabular-nums">
+			<Card class="p-3.5 sm:p-4">
+				<p class="text-[11px] font-bold text-content-muted uppercase tracking-wider mb-0.5">Rata-rata / Hari</p>
+				<p class="text-base sm:text-lg font-black font-mono text-content tabular-nums">
 					{formatRupiah(summary.avgPerDay ?? 0)}
 				</p>
 			</Card>
 
 			<!-- Transaksi Terbesar -->
-			<Card class="p-4 sm:p-5">
-				<p class="text-xs font-bold text-content-muted uppercase tracking-wider mb-1">Transaksi Terbesar</p>
+			<Card class="p-3.5 sm:p-4">
+				<p class="text-[11px] font-bold text-content-muted uppercase tracking-wider mb-0.5">Transaksi Terbesar</p>
 				{#if summary.largest}
-					<p class="text-xl font-black font-mono text-content tabular-nums">
+					<p class="text-base sm:text-lg font-black font-mono text-content tabular-nums">
 						{formatRupiah(summary.largest.amount)}
 					</p>
-					<p class="text-xs text-content-muted truncate mt-1">
+					<p class="text-[11px] text-content-muted truncate mt-0.5">
 						{summary.largest.note || summary.largest.categoryName || 'Tanpa catatan'}
 					</p>
 				{:else}
-					<p class="text-sm font-semibold text-content-muted mt-1">-</p>
+					<p class="text-xs font-semibold text-content-muted mt-0.5">-</p>
 				{/if}
 			</Card>
 		</div>
 
-		<!-- Grafik Arus Kas -->
-		<Card class="p-6">
-			<div class="flex items-center justify-between mb-4">
-				<div>
-					<h2 class="text-base font-black text-content tracking-tight">Tren Arus Kas</h2>
-					<p class="text-xs font-semibold text-content-muted">Pemasukan vs Pengeluaran per bucket {filters.granularity || 'harian'}</p>
+		<!-- Grid 2 Kolom Desktop: Grafik Tren + Pengeluaran per Kategori -->
+		<div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+			<!-- Grafik Arus Kas -->
+			<Card class="p-4 sm:p-5">
+				<div class="flex items-center justify-between mb-3">
+					<h2 class="text-sm sm:text-base font-black text-content tracking-tight">Tren Arus Kas</h2>
+					<span class="text-xs font-semibold text-content-muted">
+						{filters.granularity === 'month' ? 'Bulanan' : filters.granularity === 'week' ? 'Mingguan' : 'Harian'}
+					</span>
 				</div>
-			</div>
-			<CashflowChart data={chartData} height={200} />
-		</Card>
+				<CashflowChart data={chartData} height={160} />
+			</Card>
 
-		<div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
 			<!-- Komposisi per Kategori -->
-			<Card class="p-6 space-y-4">
-				<h2 class="text-base font-black text-content tracking-tight border-b-2 border-border/10 pb-2">
+			<Card class="p-4 sm:p-5 space-y-3">
+				<h2 class="text-sm sm:text-base font-black text-content tracking-tight border-b-2 border-border/10 pb-2">
 					Pengeluaran per Kategori
 				</h2>
 				{#if categories.length === 0}
 					<p class="text-xs text-content-muted">Belum ada pengeluaran di kategori mana pun.</p>
 				{:else}
-					<div class="space-y-3">
+					<div class="space-y-2.5">
 						{#each categories as cat}
 							{@const pct = Math.round(cat.share * 100)}
 							<div class="space-y-1">
@@ -291,7 +207,7 @@
 									<span class="text-content truncate">{cat.name}</span>
 									<span class="font-mono tabular-nums text-content-muted">{formatRupiah(cat.total)} ({pct}%)</span>
 								</div>
-								<div class="w-full h-2.5 rounded-full bg-surface-muted overflow-hidden border border-border/30">
+								<div class="w-full h-2 rounded-full bg-surface-muted overflow-hidden border border-border/30">
 									<div
 										class="h-full bg-brand rounded-full transition-all duration-300"
 										style="width: {pct}%"
@@ -302,41 +218,163 @@
 					</div>
 				{/if}
 			</Card>
+		</div>
 
-			<!-- Rincian Arus Kas per Dompet -->
-			<Card class="p-6 space-y-4">
-				<h2 class="text-base font-black text-content tracking-tight border-b-2 border-border/10 pb-2">
-					Kinerja per Dompet
-				</h2>
-				{#if wallets.length === 0}
-					<p class="text-xs text-content-muted">Belum ada mutasi dompet di periode ini.</p>
-				{:else}
-					<div class="overflow-x-auto">
-						<table class="w-full text-left text-xs font-sans">
-							<thead>
-								<tr class="border-b-2 border-border/20 text-content-muted uppercase tracking-wider">
-									<th class="py-2 font-bold">Dompet</th>
-									<th class="py-2 text-right font-bold">Masuk</th>
-									<th class="py-2 text-right font-bold">Keluar</th>
-									<th class="py-2 text-right font-bold">Net</th>
+		<!-- Rincian Arus Kas per Dompet -->
+		<Card class="p-4 sm:p-5 space-y-3">
+			<h2 class="text-sm sm:text-base font-black text-content tracking-tight border-b-2 border-border/10 pb-2">
+				Kinerja per Dompet
+			</h2>
+			{#if wallets.length === 0}
+				<p class="text-xs text-content-muted">Belum ada mutasi dompet di periode ini.</p>
+			{:else}
+				<div class="overflow-x-auto">
+					<table class="w-full text-left text-xs font-sans">
+						<thead>
+							<tr class="border-b-2 border-border/20 text-content-muted uppercase tracking-wider">
+								<th class="py-2 font-bold">Dompet</th>
+								<th class="py-2 text-right font-bold">Masuk</th>
+								<th class="py-2 text-right font-bold">Keluar</th>
+								<th class="py-2 text-right font-bold">Net</th>
+							</tr>
+						</thead>
+						<tbody class="divide-y divide-border/10">
+							{#each wallets as w}
+								<tr>
+									<td class="py-2 font-bold text-content truncate max-w-[120px]">{w.name}</td>
+									<td class="py-2 text-right font-mono tabular-nums text-income">+{formatRupiah(w.income)}</td>
+									<td class="py-2 text-right font-mono tabular-nums text-danger">-{formatRupiah(w.expense)}</td>
+									<td class="py-2 text-right font-mono tabular-nums font-bold {w.net >= 0 ? 'text-brand' : 'text-danger'}">
+										{w.net >= 0 ? '+' : '-'}{formatRupiah(Math.abs(w.net))}
+									</td>
 								</tr>
-							</thead>
-							<tbody class="divide-y divide-border/10">
-								{#each wallets as w}
-									<tr>
-										<td class="py-2.5 font-bold text-content truncate max-w-[120px]">{w.name}</td>
-										<td class="py-2.5 text-right font-mono tabular-nums text-income">+{formatRupiah(w.income)}</td>
-										<td class="py-2.5 text-right font-mono tabular-nums text-danger">-{formatRupiah(w.expense)}</td>
-										<td class="py-2.5 text-right font-mono tabular-nums font-bold {w.net >= 0 ? 'text-brand' : 'text-danger'}">
-											{w.net >= 0 ? '+' : '-'}{formatRupiah(Math.abs(w.net))}
-										</td>
-									</tr>
-								{/each}
-							</tbody>
-						</table>
+							{/each}
+						</tbody>
+					</table>
+				</div>
+			{/if}
+		</Card>
+	{/if}
+
+	<!-- Sheet Filter Modal -->
+	<Dialog.Root bind:open={showFilterSheet}>
+		<Dialog.Content class="space-y-4 max-h-[90vh] overflow-y-auto sm:max-w-md">
+			<Dialog.Header>
+				<Dialog.Title class="text-lg font-black text-content">Filter Analisis</Dialog.Title>
+			</Dialog.Header>
+
+			<form method="GET" action="/analytics" class="space-y-4">
+				<div class="space-y-1.5">
+					<label for="sheet-analytics-range" class="block text-sm font-bold text-content">Rentang Waktu</label>
+					<select
+						id="sheet-analytics-range"
+						name="range"
+						value={filters.range || 'month'}
+						class="w-full min-h-[44px] px-3 py-2 text-sm font-bold rounded-md border-2 border-border bg-surface text-content shadow-hard-xs"
+					>
+						<option value="week">Minggu Ini</option>
+						<option value="month">Bulan Ini</option>
+						<option value="year">Tahun Ini</option>
+						<option value="all">Semua</option>
+						<option value="custom">Kustom</option>
+					</select>
+				</div>
+
+				{#if filters.range === 'custom'}
+					<div class="space-y-3 pt-2 border-t border-border/20">
+						<div class="space-y-1.5">
+							<label for="from" class="block text-xs font-bold text-content">Dari Tanggal</label>
+							<input
+								type="date"
+								id="from"
+								name="from"
+								value={filters.from || ''}
+								class="w-full min-h-[44px] px-3 py-2 text-sm font-mono rounded-md border-2 border-border bg-surface text-content shadow-hard-xs"
+							/>
+						</div>
+						<div class="space-y-1.5">
+							<label for="to" class="block text-xs font-bold text-content">Sampai Tanggal</label>
+							<input
+								type="date"
+								id="to"
+								name="to"
+								value={filters.to || ''}
+								class="w-full min-h-[44px] px-3 py-2 text-sm font-mono rounded-md border-2 border-border bg-surface text-content shadow-hard-xs"
+							/>
+						</div>
 					</div>
 				{/if}
-			</Card>
-		</div>
-	{/if}
+
+				<div class="space-y-1.5">
+					<label for="granularity" class="block text-sm font-bold text-content">Granularitas Grafik</label>
+					<select
+						id="granularity"
+						name="granularity"
+						value={filters.granularity || 'day'}
+						class="w-full min-h-[44px] px-3 py-2 text-sm font-bold rounded-md border-2 border-border bg-surface text-content shadow-hard-xs"
+					>
+						<option value="day">Harian</option>
+						<option value="week">Mingguan</option>
+						<option value="month">Bulanan</option>
+					</select>
+				</div>
+
+				<div class="space-y-1.5">
+					<label for="type" class="block text-sm font-bold text-content">Jenis Transaksi</label>
+					<select
+						id="type"
+						name="type"
+						value={filters.type || 'all'}
+						class="w-full min-h-[44px] px-3 py-2 text-sm font-bold rounded-md border-2 border-border bg-surface text-content shadow-hard-xs"
+					>
+						<option value="all">Semua Jenis</option>
+						<option value="income">Pemasukan Saja</option>
+						<option value="expense">Pengeluaran Saja</option>
+					</select>
+				</div>
+
+				<div class="space-y-1.5">
+					<label for="walletId" class="block text-sm font-bold text-content">Dompet</label>
+					<select
+						id="walletId"
+						name="walletId"
+						value={filters.walletId || ''}
+						class="w-full min-h-[44px] px-3 py-2 text-sm font-bold rounded-md border-2 border-border bg-surface text-content shadow-hard-xs"
+					>
+						<option value="">Semua Dompet</option>
+						{#each options.wallets as w}
+							<option value={w.id}>{w.name}</option>
+						{/each}
+					</select>
+				</div>
+
+				<div class="space-y-1.5">
+					<label for="categoryId" class="block text-sm font-bold text-content">Kategori</label>
+					<select
+						id="categoryId"
+						name="categoryId"
+						value={filters.categoryId || ''}
+						class="w-full min-h-[44px] px-3 py-2 text-sm font-bold rounded-md border-2 border-border bg-surface text-content shadow-hard-xs"
+					>
+						<option value="">Semua Kategori</option>
+						{#each options.categories as c}
+							<option value={c.id}>{c.name} ({c.kind === 'income' ? 'Masuk' : 'Keluar'})</option>
+						{/each}
+					</select>
+				</div>
+
+				<div class="flex items-center justify-between gap-2 pt-3 border-t-2 border-border/10">
+					<a
+						href="/analytics"
+						class="min-h-[44px] px-4 py-2 text-xs font-bold rounded-md border-2 border-border bg-surface text-content hover:bg-surface-subtle flex items-center justify-center"
+					>
+						Reset
+					</a>
+					<Button type="submit" variant="primary" class="min-h-[44px]">
+						Terapkan Filter
+					</Button>
+				</div>
+			</form>
+		</Dialog.Content>
+	</Dialog.Root>
 </div>

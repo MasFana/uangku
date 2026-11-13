@@ -38,13 +38,7 @@
 	<h1 class="sr-only">Kategori Transaksi</h1>
 
 	<!-- Page Header -->
-	<div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-		<div>
-			<p class="text-sm font-semibold text-content-muted">
-				Kelompokkan pengeluaran dan pemasukan Anda untuk analisa arus kas yang akurat.
-			</p>
-		</div>
-
+	<div class="flex items-center justify-end">
 		<Button
 			variant="primary"
 			size="md"

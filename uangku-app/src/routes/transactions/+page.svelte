@@ -141,22 +141,15 @@
 <div class="space-y-4">
 	<h1 class="sr-only">Riwayat Transaksi</h1>
 
-	<!-- Header Subtext -->
-	<div>
-		<p class="text-sm font-semibold text-content-muted">
-			Pantau seluruh alur kas masuk, keluar, dan transfer antar dompet Anda.
-		</p>
-	</div>
-
 	<!-- Baris Periode Ringkas & Kontrol Filter -->
-	<Card class="p-3">
-		<div class="flex flex-wrap items-center justify-between gap-2.5">
+	<Card class="p-2 sm:p-2.5">
+		<div class="flex items-center justify-between gap-2">
 			<!-- Navigasi Periode Bulan (‹ Bulan Tahun ›) -->
-			<div class="flex items-center gap-1.5 sm:gap-2">
+			<div class="flex items-center gap-1 sm:gap-1.5 min-w-0">
 				{#if data.periodNav.prev}
 					<a
 						href={buildPeriodUrl(data.periodNav.prev)}
-						class="w-10 h-10 rounded-md border-2 border-border bg-surface hover:bg-surface-subtle flex items-center justify-center font-black text-base shadow-hard-xs transition-all focus-visible:outline-2"
+						class="w-9 h-9 sm:w-10 sm:h-10 shrink-0 rounded-md border-2 border-border bg-surface hover:bg-surface-subtle flex items-center justify-center font-black text-base shadow-hard-xs transition-all focus-visible:outline-2"
 						aria-label="Periode sebelumnya"
 						title="Periode sebelumnya"
 					>
@@ -164,21 +157,21 @@
 					</a>
 				{:else}
 					<span
-						class="w-10 h-10 rounded-md border-2 border-border/30 text-content-muted flex items-center justify-center font-black text-base opacity-40 cursor-not-allowed"
+						class="w-9 h-9 sm:w-10 sm:h-10 shrink-0 rounded-md border-2 border-border/30 text-content-muted flex items-center justify-center font-black text-base opacity-40 cursor-not-allowed"
 						aria-hidden="true"
 					>
 						‹
 					</span>
 				{/if}
 
-				<span class="px-2 font-black text-sm sm:text-base text-content select-none">
+				<span class="px-1.5 sm:px-2 font-black text-xs sm:text-sm text-content truncate select-none">
 					{data.filters.label}
 				</span>
 
 				{#if data.periodNav.next}
 					<a
 						href={buildPeriodUrl(data.periodNav.next)}
-						class="w-10 h-10 rounded-md border-2 border-border bg-surface hover:bg-surface-subtle flex items-center justify-center font-black text-base shadow-hard-xs transition-all focus-visible:outline-2"
+						class="w-9 h-9 sm:w-10 sm:h-10 shrink-0 rounded-md border-2 border-border bg-surface hover:bg-surface-subtle flex items-center justify-center font-black text-base shadow-hard-xs transition-all focus-visible:outline-2"
 						aria-label="Periode berikutnya"
 						title="Periode berikutnya"
 					>
@@ -186,32 +179,21 @@
 					</a>
 				{:else}
 					<span
-						class="w-10 h-10 rounded-md border-2 border-border/30 text-content-muted flex items-center justify-center font-black text-base opacity-40 cursor-not-allowed"
+						class="w-9 h-9 sm:w-10 sm:h-10 shrink-0 rounded-md border-2 border-border/30 text-content-muted flex items-center justify-center font-black text-base opacity-40 cursor-not-allowed"
 						aria-hidden="true"
 					>
 						›
 					</span>
 				{/if}
-
-				<!-- Chip Pilihan "Semua" -->
-				<a
-					href={buildPeriodUrl('all')}
-					class="min-h-[40px] px-3 py-1.5 text-xs font-bold rounded-md border-2 transition-all flex items-center {data.filters.period === 'all'
-						? 'bg-content text-canvas border-border shadow-hard-xs'
-						: 'border-border/30 hover:border-border text-content bg-surface'}"
-					aria-label="Tampilkan semua periode"
-				>
-					Semua
-				</a>
 			</div>
 
-			<!-- Tombol Buka Sheet Filter (Ponsel) / Tombol Filter -->
-			<div class="flex items-center gap-2">
+			<!-- Tombol Buka Sheet Filter -->
+			<div class="flex items-center gap-1.5 shrink-0">
 				<Button
 					type="button"
 					variant="outline"
 					size="sm"
-					class="md:hidden min-h-[40px] relative font-bold text-xs"
+					class="min-h-[38px] sm:min-h-[40px] px-2.5 sm:px-3 relative font-bold text-xs"
 					onclick={() => (showFilterSheet = true)}
 				>
 					<svg class="w-4 h-4 mr-1 inline-block" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.25" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
@@ -227,109 +209,16 @@
 			</div>
 		</div>
 
-		<!-- Desktop Inline Filter Bar (md+) -->
-		<div class="hidden md:block pt-3 mt-3 border-t-2 border-border/10">
-			<form method="GET" action="/transactions" class="grid grid-cols-5 gap-2.5 items-end">
-				<input type="hidden" name="period" value={data.filters.period} />
-
-				<div>
-					<label for="desktop-filter-type" class="block text-xs font-bold text-content-muted mb-1">Tipe</label>
-					<select
-						id="desktop-filter-type"
-						name="type"
-						value={data.filters.type}
-						class="w-full min-h-[40px] px-2.5 py-1 text-xs font-bold rounded-md border-2 border-border bg-surface text-content shadow-hard-xs"
-					>
-						<option value="">Semua Tipe</option>
-						<option value="expense">Pengeluaran</option>
-						<option value="income">Pemasukan</option>
-						<option value="transfer">Transfer</option>
-					</select>
-				</div>
-
-				<div>
-					<label for="desktop-filter-wallet" class="block text-xs font-bold text-content-muted mb-1">Dompet</label>
-					<select
-						id="desktop-filter-wallet"
-						name="walletId"
-						value={data.filters.walletId}
-						class="w-full min-h-[40px] px-2.5 py-1 text-xs font-bold rounded-md border-2 border-border bg-surface text-content shadow-hard-xs"
-					>
-						<option value="">Semua Dompet</option>
-						{#each data.wallets || [] as w}
-							<option value={w.id}>{w.name}</option>
-						{/each}
-					</select>
-				</div>
-
-				<div>
-					<label for="desktop-filter-category" class="block text-xs font-bold text-content-muted mb-1">Kategori</label>
-					<select
-						id="desktop-filter-category"
-						name="categoryId"
-						value={data.filters.categoryId}
-						class="w-full min-h-[40px] px-2.5 py-1 text-xs font-bold rounded-md border-2 border-border bg-surface text-content shadow-hard-xs"
-					>
-						<option value="">Semua Kategori</option>
-						{#each data.categories || [] as c}
-							<option value={c.id}>{c.name}</option>
-						{/each}
-					</select>
-				</div>
-
-				{#if data.filters.period === 'custom'}
-					<div class="col-span-2 grid grid-cols-2 gap-2">
-						<div>
-							<label for="desktop-filter-start" class="block text-xs font-bold text-content-muted mb-1">Dari</label>
-							<input
-								type="date"
-								id="desktop-filter-start"
-								name="startDate"
-								value={data.filters.startDate}
-								class="w-full min-h-[40px] px-2 py-1 text-xs font-bold rounded-md border-2 border-border bg-surface text-content shadow-hard-xs"
-							/>
-						</div>
-						<div>
-							<label for="desktop-filter-end" class="block text-xs font-bold text-content-muted mb-1">Sampai</label>
-							<input
-								type="date"
-								id="desktop-filter-end"
-								name="endDate"
-								value={data.filters.endDate}
-								class="w-full min-h-[40px] px-2 py-1 text-xs font-bold rounded-md border-2 border-border bg-surface text-content shadow-hard-xs"
-							/>
-						</div>
-					</div>
-				{/if}
-
-				<div class="flex items-center gap-2">
-					<Button type="submit" variant="primary" class="w-full min-h-[40px] text-xs">
-						Terapkan
-					</Button>
-					{#if activeFilterCount > 0}
-						<a
-							href={buildPeriodUrl(data.filters.period)}
-							class="min-h-[40px] px-3 py-1 flex items-center justify-center rounded-md border-2 border-border bg-surface text-xs font-bold text-content hover:bg-surface-subtle"
-						>
-							Reset
-						</a>
-					{/if}
-				</div>
-			</form>
-		</div>
-
 		<!-- Chip Filter Aktif (Removable) -->
 		{#if activeFilterCount > 0}
-			<div class="flex flex-wrap items-center gap-1.5 pt-2.5 mt-2.5 border-t border-border/10">
-				<span class="text-xs font-bold text-content-muted mr-1">Filter aktif:</span>
-
+			<div class="flex flex-wrap items-center gap-1.5 pt-2 mt-2 border-t border-border/10">
 				{#if data.filters.type}
 					<a
 						href={buildUrlWithout('type')}
-						class="inline-flex items-center gap-1 px-2.5 py-1 rounded-full border border-border bg-surface text-xs font-bold text-content hover:bg-danger/10 hover:border-danger hover:text-danger transition-colors min-h-[32px]"
-						aria-label="Hapus filter tipe {data.filters.type}"
+						class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full border border-border bg-surface text-xs font-bold text-content hover:bg-danger/10 hover:border-danger hover:text-danger transition-colors min-h-[32px]"
+						aria-label="Hapus filter {data.filters.type === 'income' ? 'Pemasukan' : data.filters.type === 'expense' ? 'Pengeluaran' : 'Transfer'}"
 					>
-						<span>Tipe: {data.filters.type === 'income' ? 'Pemasukan' : data.filters.type === 'expense' ? 'Pengeluaran' : 'Transfer'}</span>
+						<span>{data.filters.type === 'income' ? 'Pemasukan' : data.filters.type === 'expense' ? 'Pengeluaran' : 'Transfer'}</span>
 						<span aria-hidden="true" class="font-black text-sm">×</span>
 					</a>
 				{/if}
@@ -337,10 +226,10 @@
 				{#if data.filters.walletId && walletMap.has(data.filters.walletId)}
 					<a
 						href={buildUrlWithout('walletId')}
-						class="inline-flex items-center gap-1 px-2.5 py-1 rounded-full border border-border bg-surface text-xs font-bold text-content hover:bg-danger/10 hover:border-danger hover:text-danger transition-colors min-h-[32px]"
-						aria-label="Hapus filter dompet {walletMap.get(data.filters.walletId)}"
+						class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full border border-border bg-surface text-xs font-bold text-content hover:bg-danger/10 hover:border-danger hover:text-danger transition-colors min-h-[32px]"
+						aria-label="Hapus filter {walletMap.get(data.filters.walletId)}"
 					>
-						<span>Dompet: {walletMap.get(data.filters.walletId)}</span>
+						<span>{walletMap.get(data.filters.walletId)}</span>
 						<span aria-hidden="true" class="font-black text-sm">×</span>
 					</a>
 				{/if}
@@ -348,10 +237,10 @@
 				{#if data.filters.categoryId && categoryMap.has(data.filters.categoryId)}
 					<a
 						href={buildUrlWithout('categoryId')}
-						class="inline-flex items-center gap-1 px-2.5 py-1 rounded-full border border-border bg-surface text-xs font-bold text-content hover:bg-danger/10 hover:border-danger hover:text-danger transition-colors min-h-[32px]"
-						aria-label="Hapus filter kategori {categoryMap.get(data.filters.categoryId)}"
+						class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full border border-border bg-surface text-xs font-bold text-content hover:bg-danger/10 hover:border-danger hover:text-danger transition-colors min-h-[32px]"
+						aria-label="Hapus filter {categoryMap.get(data.filters.categoryId)}"
 					>
-						<span>Kategori: {categoryMap.get(data.filters.categoryId)}</span>
+						<span>{categoryMap.get(data.filters.categoryId)}</span>
 						<span aria-hidden="true" class="font-black text-sm">×</span>
 					</a>
 				{/if}
@@ -359,10 +248,10 @@
 				{#if data.filters.period === 'custom' && (data.filters.startDate || data.filters.endDate)}
 					<a
 						href={buildUrlWithout('customDates')}
-						class="inline-flex items-center gap-1 px-2.5 py-1 rounded-full border border-border bg-surface text-xs font-bold text-content hover:bg-danger/10 hover:border-danger hover:text-danger transition-colors min-h-[32px]"
-						aria-label="Hapus filter rentang kustom"
+						class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full border border-border bg-surface text-xs font-bold text-content hover:bg-danger/10 hover:border-danger hover:text-danger transition-colors min-h-[32px]"
+						aria-label="Hapus rentang kustom"
 					>
-						<span>Rentang: {data.filters.startDate || '...'} s/d {data.filters.endDate || '...'}</span>
+						<span>{data.filters.startDate || '...'} – {data.filters.endDate || '...'}</span>
 						<span aria-hidden="true" class="font-black text-sm">×</span>
 					</a>
 				{/if}
@@ -522,7 +411,7 @@
 		{/if}
 	{/if}
 
-	<!-- Sheet Filter Modal (Ponsel) -->
+	<!-- Sheet Filter Modal -->
 	<Dialog.Root bind:open={showFilterSheet}>
 		<Dialog.Content class="space-y-4 max-h-[90vh] overflow-y-auto sm:max-w-md">
 			<Dialog.Header>
@@ -530,7 +419,18 @@
 			</Dialog.Header>
 
 			<form method="GET" action="/transactions" class="space-y-4">
-				<input type="hidden" name="period" value={data.filters.period} />
+				<div class="space-y-1.5">
+					<label for="sheet-filter-period" class="block text-sm font-bold text-content">Rentang Waktu</label>
+					<select
+						id="sheet-filter-period"
+						name="period"
+						value={data.filters.period}
+						class="w-full min-h-[44px] px-3 py-2 text-sm font-bold rounded-md border-2 border-border bg-surface text-content shadow-hard-xs"
+					>
+						<option value={data.filters.period !== 'all' && data.filters.period !== 'custom' ? data.filters.period : ''}>Bulan Terpilih ({data.filters.label})</option>
+						<option value="all">Semua Periode</option>
+					</select>
+				</div>
 
 				<div class="space-y-1.5">
 					<label for="sheet-filter-type" class="block text-sm font-bold text-content">Tipe Transaksi</label>

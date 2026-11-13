@@ -72,7 +72,6 @@
 		<div class="flex items-center justify-between mb-4">
 			<div>
 				<h2 class="text-base font-black text-content tracking-tight">Tren Arus Kas 6 Bulan</h2>
-				<p class="text-xs font-semibold text-content-muted">Perbandingan rasio pemasukan vs pengeluaran</p>
 			</div>
 			<a
 				href="/analytics"

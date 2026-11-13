@@ -31,13 +31,7 @@
 	<h1 class="sr-only">Dompet & Rekening</h1>
 
 	<!-- Page Header -->
-	<div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-		<div>
-			<p class="text-sm font-semibold text-content-muted">
-				Kelola rekening bank, uang tunai, dan dompet digital tempat Anda menyimpan uang.
-			</p>
-		</div>
-
+	<div class="flex items-center justify-end">
 		<Button
 			variant="primary"
 			size="md"
@@ -106,7 +100,7 @@
 					</div>
 
 					<div class="mt-4 pt-3 border-t-2 border-border/10 flex items-baseline justify-between">
-						<span class="text-xs font-bold text-content-muted">Saldo Saat Ini</span>
+						<span class="text-xs font-bold text-content-muted">Saldo</span>
 						<p class="text-xl font-black font-mono tabular-nums text-content">
 							{formatRupiah(wallet.balance ?? 0)}
 						</p>

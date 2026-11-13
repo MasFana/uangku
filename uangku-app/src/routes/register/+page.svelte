@@ -90,18 +90,12 @@
 <div class="min-h-[85vh] flex flex-col items-center justify-center py-6 px-4">
 	<div class="mb-6 text-center">
 		<Logo size="lg" showText={true} />
-		<p class="text-xs font-semibold text-content-muted mt-2">
-			Mulai kelola keuangan pribadi Anda sekarang
-		</p>
 	</div>
 
 	<Card variant="default" shadow="lg" class="w-full max-w-sm p-6">
-		<h1 class="text-xl font-black text-content tracking-tight mb-1">
+		<h1 class="text-xl font-black text-content tracking-tight mb-5">
 			Buat Akun Baru
 		</h1>
-		<p class="text-xs text-content-muted mb-5 leading-relaxed">
-			Daftar mandiri dengan email dan kata sandi Anda.
-		</p>
 
 		{#if errorMessage}
 			<div

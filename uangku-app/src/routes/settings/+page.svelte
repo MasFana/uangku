@@ -14,12 +14,6 @@
 <div class="space-y-6 max-w-xl mx-auto">
 	<h1 class="sr-only">Pengaturan Akun</h1>
 
-	<div>
-		<p class="text-sm font-semibold text-content-muted">
-			Kelola akun dan preferensi aplikasi pencatatan keuangan Anda.
-		</p>
-	</div>
-
 	<!-- Info Akun -->
 	<Card class="p-6 space-y-4">
 		<h2 class="text-base font-black text-content border-b-2 border-border/10 pb-2">
@@ -78,9 +72,6 @@
 		<h2 class="text-base font-black text-content">
 			Ekspor Data
 		</h2>
-		<p class="text-xs text-content-muted leading-relaxed">
-			Unduh seluruh data transaksi Anda dalam satu berkas CSV untuk arsip pribadi atau analisis mandiri.
-		</p>
 		<div class="pt-1">
 			<a
 				href="/api/export"
@@ -100,9 +91,6 @@
 		<h2 class="text-base font-black text-danger">
 			Keluar dari Sesi
 		</h2>
-		<p class="text-xs text-content-muted leading-relaxed">
-			Keluar dari akun Anda pada perangkat ini. Untuk mengakses kembali data Anda, silakan masuk dengan email dan kata sandi.
-		</p>
 
 		<form method="POST" action="?/logout" class="pt-2">
 			<Button
