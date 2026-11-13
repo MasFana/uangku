@@ -112,3 +112,31 @@ Larangan visual (dari skill antislop, tetap berlaku): gradien ungu-biru, kartu b
 - Repositori membaca per 200 baris lewat `TransactionsRepo.iterateAll` (kursor stabil `occurred_at, id`), respons di-stream, tidak ada penampung seluruh data di memori. Tanpa R2.
 - Bukti produksi (3 transaksi uji): `200`, `content-type: text/csv; charset=utf-8`, `content-disposition: attachment; filename="uangku-transaksi-YYYY-MM-DD.csv"`, 3 byte pertama `ef bb bf`, catatan `Makan, "sate" ayam` tersimpan sebagai `"Makan, ""sate"" ayam"`, `0` nilai berdesimal, kategori kosong tetap kosong, transfer `-> Dompet Uji 2`.
 - Uji unit: `tests/csv-export.test.ts` (6 uji; decoder uji memakai `ignoreBOM: true`, karena `TextDecoder` bawaan membuang BOM).
+
+## Analitik dipisah ke `/analytics`
+- Beranda menyimpan grafik 6 bulan dengan cache KV berkunci `userId`; menambahkan tab granularitas dan filter di beranda akan menyajikan angka dari kunci cache yang salah dan menampilkan kontrol grafik dua kali. Karena itu kontrol analitik hanya ada di `/analytics`, dan beranda menautkan ke sana.
+- Semua filter lewat URL (`?range=month&granularity=day&walletId=...`): bisa di-bookmark, dan `load` server hanya sekali per URL, tanpa state klien yang bisa berbeda dari data.
+- Transfer dikecualikan dari `income`/`expense`/`net` (konsisten dengan `calculateCashflow`), tetapi tetap dihitung di `count` — memindahkan uang antar dompet bukan pemasukan atau pengeluaran.
+- Bucket dihitung UTC, minggu mulai Senin, dan rangkaian bucket selalu kontinu (hari tanpa transaksi tetap muncul bernilai 0) supaya grafik tidak menipu dengan celah waktu.
+- Grafik memakai ulang `CashflowChart.svelte` tanpa perubahan; tidak ada pustaka chart.
+
+## Kategori bawaan: 17 kategori, lewat tombol, idempotent
+- `DEFAULT_CATEGORIES` di `src/lib/server/defaults.ts`: 12 pengeluaran + 5 pemasukan, `icon` NULL (UI tidak merender ikon, jadi mengisinya hanya menambah data yang tidak terpakai).
+- Penyisipan **tidak** otomatis saat daftar kosong, melainkan lewat tombol "Isi kategori bawaan" (`POST ?/seedDefaults`). Pengguna tetap wajib membuat dompet lebih dulu, jadi seed otomatis tidak menghilangkan langkah apa pun; sebaliknya seed otomatis bisa mengisi kategori yang tidak diinginkan.
+- Idempotent per `(kind, nama huruf kecil)`: aman dipanggil berulang.
+- `src/lib/server/services/categories.ts` menyisipkan per potongan 5 baris. Satu statement berisi 17 baris x 8 kolom = 136 parameter melebihi batas 100 parameter D1 (`D1_ERROR: too many SQL variables`). Batas ini terjawab di Miniflare maupun produksi, jadi jumlah kolom pada record wajib dihitung ulang bila ditambah.
+
+## `/transactions`: periode bulanan dan divider harian
+- Satuan rentang utama adalah **bulan** (`period=YYYY-MM`), dengan panah ‹ › dan opsi "Semua" serta "Kustom" (date picker). Alasan: pemakaian nyata hampir selalu "rekap bulan ini", sementara dua `<input type="date">` di ponsel menyulitkan.
+- Total per hari **tidak** dihitung dari baris yang termuat. Pagination kursor 20 baris dapat membelah satu hari, dan menjumlahkan baris yang termuat menghasilkan total separuh yang tampak seperti angka benar. Karena itu server mengirim `dayTotals` hasil `GROUP BY` hari untuk hari-hari yang muncul di halaman; UI menandai bila baris termuat lebih sedikit daripada `count` hari itu ("memuat X dari Y").
+- Batas rentang inklusif memakai bentuk yang sudah ada di repo: `T00:00:00.000Z` sampai `T23:59:59.999Z`, karena `occurred_at` disimpan sebagai ISO UTC tengah malam dari picker.
+- `period` tidak valid ("2026-13", "abc") jatuh ke bulan berjalan, bukan 500. `periodNav.next` bernilai null pada bulan berjalan atau lebih baru, sehingga aplikasi tidak bisa membuka bulan kosong di masa depan.
+- `dayTotals` hanya memuat hari yang ada di halaman (maksimum sebesar `limit`), jadi biayanya satu query agregat, bukan satu query per baris.
+
+## Kerangka: judul header dan FAB
+- Nama halaman di header diambil dari satu `routeMap` di `src/routes/+layout.svelte` yang juga dipakai nav desktop dan nav bawah. Dua daftar nama terpisah pasti akan berbeda suatu saat; satu peta tidak bisa.
+- `"Uangku"` hanya tampil di beranda; di halaman lain monogramnya tetap ada sebagai tautan ke beranda dengan `aria-label="Uangku, beranda"` supaya nama aplikasi tidak hilang untuk pembaca layar.
+- `<h1>` tiap sub-halaman menjadi `sr-only` karena judul sudah tampil di header. Struktur dokumen dan pembaca layar tetap mendapat satu `h1`, tetapi judul tidak tampil dua kali di layar ponsel.
+- FAB berarti **catat transaksi** dan tersedia di semua halaman: tombol `+` di nav tengah (ponsel, `aria-label="Catat transaksi"`) dan FAB mengambang `hidden md:flex fixed bottom-6 right-6` di desktop yang sebelumnya tidak punya jalan pintas sama sekali. Tombol "+ Transaksi" di header dan "+ Catat Transaksi" di halaman transaksi dihapus karena menjadi duplikat.
+- Dompet dan kategori **tidak** memakai FAB: aksinya jarang (sekali di awal), sementara FAB permanen menutupi konten setiap hari. Keduanya memakai tombol bertext lengkap di baris header halaman, sehingga pada layar dompet tombol `+` di nav (catat transaksi) dan "+ Tambah Dompet" tidak tampak identik.
+- `main` memakai `md:pb-28` supaya FAB mengambang tidak menutupi baris terakhir atau tombol "Muat Lebih Banyak".
