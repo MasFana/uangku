@@ -104,6 +104,8 @@ npx wrangler kv namespace create CACHE
 npx wrangler d1 migrations apply APP_DB --remote
 npx wrangler secret put BETTER_AUTH_SECRET   # 32+ random characters
 npx wrangler secret put BETTER_AUTH_URL      # https://your-worker-url
+# optional, when the app answers on more than one hostname:
+npx wrangler secret put BETTER_AUTH_TRUSTED_ORIGINS   # origin,origin
 npm run deploy
 ```
 

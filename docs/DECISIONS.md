@@ -69,7 +69,7 @@ Larangan visual (dari skill antislop, tetap berlaku): gradien ungu-biru, kartu b
 - Akun Cloudflare: satu akun kerja; nama dan id akun tidak ditulis di repo.
 - Resource dibuat 2026-11-12: D1 `APP_DB` (region APAC) dan KV `CACHE`. Kedua id ada di `uangku-app/wrangler.jsonc`; siapa pun yang memakai repo ini menggantinya dengan miliknya sendiri (`docs/development.md`).
 - **R2 dinonaktifkan sementara** di `wrangler.jsonc`: `wrangler r2 bucket create` gagal dengan `code 10042 Please enable R2 through the Cloudflare Dashboard`. Binding `RECEIPTS` dan bucket `uangku-receipts` dinyalakan kembali saat F6 (upload struk) dikerjakan. Pemilik harus mengaktifkan R2 di dashboard dulu.
-- Secret wajib di produksi: `BETTER_AUTH_SECRET` (acak, ≥32 karakter), `BETTER_AUTH_URL=https://akularping.my.id`. Secret `AI_*` belum diisi karena `.dev.vars` masih berisi placeholder dan fitur AI belum diimplementasikan.
+- Secret wajib di produksi: `BETTER_AUTH_SECRET` (acak, ≥32 karakter), `BETTER_AUTH_URL=https://akularping.my.id`. Hostname `workers.dev` tetap bisa login karena `BETTER_AUTH_TRUSTED_ORIGINS` memuatnya. Secret `AI_*` belum diisi karena `.dev.vars` masih berisi placeholder dan fitur AI belum diimplementasikan.
 
 ## Akses binding di produksi: `cloudflare:workers`, bukan `event.platform`
 - SvelteKit 3 membaca `event.platform` dari opsi `server.respond({ platform })`. `@sveltejs/adapter-cloudflare@8.0.2` hanya mengirim `env` ke `server.init` dan **tidak** mengirim `platform` (lihat `node_modules/@sveltejs/adapter-cloudflare/files/worker.js`).

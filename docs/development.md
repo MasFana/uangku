@@ -92,9 +92,10 @@ Before the first deploy, set the secrets and apply migrations:
 npx wrangler d1 migrations apply APP_DB --remote
 npx wrangler secret put BETTER_AUTH_SECRET
 npx wrangler secret put BETTER_AUTH_URL      # your deployed url, no trailing slash
+npx wrangler secret put BETTER_AUTH_TRUSTED_ORIGINS   # optional: extra origins, comma separated
 ```
 
-`BETTER_AUTH_URL` must match the deployed origin, or the session cookie is issued for the wrong host. `.github/workflows/deploy.yml` runs migrations and deploys on push to `main` when the repository secrets `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID` are set.
+`BETTER_AUTH_URL` must match the deployed origin, or the session cookie is issued for the wrong host. Sign-in from any other hostname needs that hostname in `BETTER_AUTH_TRUSTED_ORIGINS`; without it Better-Auth answers `403 INVALID_ORIGIN`. List every hostname that serves the app, for example a `workers.dev` name and a custom domain. `.github/workflows/deploy.yml` runs migrations and deploys when you start it by hand and the repository secrets `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID` are set.
 
 Verify a deployment:
 
@@ -110,6 +111,7 @@ The script checks that `/login` returns 200, `/api/auth/get-session` returns 200
 |---|---|
 | `Database binding APP_DB is missing from platform environment` | The D1 id in `wrangler.jsonc` does not exist on the account you are logged in to, or `platformProxy` is off. Run `npx wrangler d1 create APP_DB` and copy the id. |
 | Pages redirect to `/login` in a loop | `BETTER_AUTH_URL` does not match the origin you opened. It must include `http://localhost:5173` in dev. |
+| Sign-in answers `403 INVALID_ORIGIN` | The origin you opened is not in `BETTER_AUTH_URL` or `BETTER_AUTH_TRUSTED_ORIGINS`. |
 | `D1_ERROR: too many SQL variables` | A statement binds more than 100 parameters. Insert in chunks, as `seedDefaultsForUser` does with 5 rows per statement. |
 | `FOREIGN KEY constraint failed` when saving a transaction | An optional select sent `''` instead of `null`. `optionalId` in `src/lib/server/validation.ts` handles this; keep it on new optional id fields. |
 | `ENOSPC: System limit for number of file watchers reached` | The host has a low `fs.inotify.max_user_watches` and a read only sysctl. Raise the limit, or verify against a deployed worker instead of the dev server. |

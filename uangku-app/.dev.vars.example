@@ -1,6 +1,9 @@
 # Better-Auth
 BETTER_AUTH_SECRET=uangku-dev-secret-change-in-production-min32chars
 BETTER_AUTH_URL=http://localhost:5173
+# Extra origins that may sign in, comma separated. Use this when the app answers on
+# more than one hostname, for example a workers.dev name and a custom domain.
+BETTER_AUTH_TRUSTED_ORIGINS=
 
 # AI Insight (Fase 2 - OpenAI-compatible endpoint)
 AI_BASE_URL=https://api.openai.com/v1
