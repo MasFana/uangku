@@ -66,7 +66,7 @@ body:
     id: commit
     attributes:
       label: Commit or deployment
-      placeholder: 16d49ac or a workers.dev URL
+      placeholder: 16d49ac or a deployment URL
     validations:
       required: false
   - type: textarea

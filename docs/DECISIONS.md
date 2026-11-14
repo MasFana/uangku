@@ -20,7 +20,7 @@ Larangan visual (dari skill antislop, tetap berlaku): gradien ungu-biru, kartu b
 |---|---|
 | Login | **Email + password saja** (Better-Auth `emailAndPassword`). Tanpa OAuth, tanpa magic link, tanpa verifikasi email |
 | Branding | Nama **Uangku** + **monogram huruf** bergaya brutalist (SVG sendiri). Tanpa ikon bawaan Lucide untuk logo |
-| Domain produksi | **workers.dev** (`uangku.fanaapi425.workers.dev`). Custom domain `akularping.my.id` belum aktif: token OAuth CLI hanya punya scope `zone:read`, tanpa izin edit DNS |
+| Domain produksi | **`https://akularping.my.id`** — custom domain Cloudflare, dipindah oleh pemilik. Hostname `workers.dev` tetap hidup dan menyajikan build yang sama. `routes` sengaja TIDAK ditulis di `wrangler.jsonc`: repo ini template publik, dan domain dipasang di dashboard |
 | Data awal | **Seed demo lokal** (`--local`). Di produksi, 17 kategori bawaan disisipkan otomatis saat akun dibuat (lihat bagian "Kategori bawaan") |
 
 ## Kode

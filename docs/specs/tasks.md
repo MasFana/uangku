@@ -2,7 +2,7 @@
 
 Format: checklist atomik, urut sesuai dependensi. Agent: kerjakan satu baris = satu commit kecil.
 
-> Status 2026-11-13: Sprint 1–5 SELESAI dan live di https://uangku.fanaapi425.workers.dev. Sisa pekerjaan: F6 (terblokir R2) dan Z1 (budget per kategori). Detail riwayat ada di `CHANGELOG.md`.
+> Status 2026-11-14: Sprint 1–5 SELESAI dan live di https://akularping.my.id. Sisa pekerjaan: F6 (terblokir R2) dan Z1 (budget per kategori). Detail riwayat ada di `CHANGELOG.md`.
 
 ## Sprint 1 — SELESAI (review: `docs/reviews/sprint1.md`)
 - [x] S1. `npx sv create uangku-app` + `@sveltejs/adapter-cloudflare`
@@ -44,7 +44,7 @@ Format: checklist atomik, urut sesuai dependensi. Agent: kerjakan satu baris = s
 - [ ] F6. Upload struk ke R2 (validasi 5 MB, `image/*`) + endpoint lihat struk — **terblokir**: binding R2 belum aktif di akun (error 10042), binding `RECEIPTS` sudah dihapus dari `wrangler.jsonc`
 - [x] F9. Export CSV streaming (`/api/export`, BOM + CRLF + escape RFC 4180)
 - [ ] Z1. Budget per kategori
-- [x] Z2. Deploy produksi + smoke test (workers.dev; custom domain tertunda karena izin DNS OAuth)
+- [x] Z2. Deploy produksi + smoke test. Live di custom domain https://akularping.my.id
 
 ## Sprint 3 — Analisis & tema — SELESAI (live di produksi)
 Rencana (disetujui pemilik 2026-11-12): halaman analisis dengan filter + toggle tema gelap.

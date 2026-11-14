@@ -8,7 +8,7 @@ A personal finance tracker for Indonesian rupiah, built as one SvelteKit app on 
 ![D1 + Drizzle](https://img.shields.io/badge/D1-Drizzle-4B5563.svg)
 ![CI](https://github.com/MasFana/uangku/actions/workflows/ci.yml/badge.svg)
 
-Test deployment: https://uangku.fanaapi425.workers.dev. Register with any email address. Do not enter real financial data there, it is a machine used for smoke tests.
+Test deployment: https://akularping.my.id. Register with any email address. Do not enter real financial data there, it is a machine used for smoke tests.
 
 <img src="docs/screenshots/home-light.png" alt="Uangku home screen on a phone: total balance, this month's cash flow, and the latest transactions" width="320"> <img src="docs/screenshots/home-dark.png" alt="The same home screen in the dark theme" width="320">
 
@@ -116,7 +116,6 @@ Stated plainly, because a README that promises features the code does not have i
 - Receipt photos to R2. The `RECEIPTS` binding was removed from `wrangler.jsonc`, because R2 is turned off on this deployment account.
 - AI monthly insight and receipt scanning. The secrets `AI_BASE_URL`, `AI_API_KEY`, and `AI_MODEL` are reserved in `.dev.vars.example`, and no code reads them yet.
 - Budgets, tags with D1 FTS5 search, savings goals, recurring entries, multi currency, and offline PWA support.
-- A custom domain. The app runs on `workers.dev`.
 
 Plans for those, with data models, are in `docs/specs/roadmap.md`.
 

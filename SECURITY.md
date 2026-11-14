@@ -29,7 +29,7 @@ What to expect: an acknowledgement within a week, and either a fix or a written 
 
 ## Out of scope
 
-- The test deployment at `workers.dev`. It is a public machine used for smoke tests, and anyone can register. Do not put real financial data in it.
+- The test deployment at `https://akularping.my.id`. It is a public machine used for smoke tests, and anyone can register. Do not put real financial data in it.
 - Missing headers or TLS settings on the app's own Cloudflare zone; Cloudflare handles those.
 - Denial of service by volume. The app runs on Cloudflare, which absorbs that.
 - Findings from an automated scanner with no demonstrated impact.

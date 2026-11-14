@@ -20,6 +20,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 - Mobile shell with bottom navigation, a center action that starts a transaction from any screen, and a desktop floating action button.
 - `scripts/check.sh`, which runs typecheck, build, the design detector, and tests in order.
 - Smoke test script for a deployed worker: `/login`, `/api/auth/get-session`, and the redirect on `/`.
+- A Cloudflare custom domain, `https://akularping.my.id`. The `workers.dev` hostname serves the same build.
 - Repository files for a public release: README with screenshots of the running app, MIT `LICENSE`, `CONTRIBUTING.md`, `SECURITY.md`, `CODE_OF_CONDUCT.md`, issue and pull request templates, a deploy workflow, app icons, and a social preview image.
 
 ### Fixed
@@ -47,4 +48,3 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 - Receipt photos to R2 are not implemented. The `RECEIPTS` binding is absent from `wrangler.jsonc`, because R2 is turned off on the deployment account.
 - AI insight and receipt scanning are not implemented. `AI_BASE_URL`, `AI_API_KEY`, and `AI_MODEL` are reserved secret names with no reader in the code.
 - Budgets, tags with D1 FTS5 search, savings goals, recurring entries, multi currency, and offline support are planned in `docs/specs/roadmap.md`.
-- The app runs on a `workers.dev` hostname. The custom domain is not connected.
