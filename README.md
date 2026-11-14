@@ -107,7 +107,7 @@ npx wrangler secret put BETTER_AUTH_URL      # https://your-worker-url
 npm run deploy
 ```
 
-`.github/workflows/deploy.yml` does the same on every push to `main` when the repository secrets `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID` exist.
+`.github/workflows/deploy.yml` runs the same steps from the Actions tab when you start it by hand. It stays manual on purpose: a published template must not deploy to anyone's account on push. Add the repository secrets `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID` before you start it.
 
 ## Not built yet
 

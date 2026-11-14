@@ -1,10 +1,7 @@
 name: Deploy to Cloudflare Workers
 
 on:
-  push:
-    branches:
-      - master
-      - main
+  # Manual on purpose: a published template must not deploy to anyone's account on push.
   workflow_dispatch:
 
 jobs:
