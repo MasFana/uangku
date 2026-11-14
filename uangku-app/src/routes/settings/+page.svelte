@@ -96,7 +96,7 @@
 			<Button
 				type="submit"
 				variant="outline"
-				class="border-danger text-danger hover:bg-danger hover:text-white"
+				class="border-danger text-danger hover:bg-danger hover:text-danger-foreground"
 			>
 				Keluar dari Akun
 			</Button>

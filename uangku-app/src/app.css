@@ -27,6 +27,14 @@
 
   --primitive-blue-300: oklch(0.820 0.090 240);
   --primitive-blue-500: oklch(0.620 0.120 240);
+  /* Dark-only primitives: warna konten/chip di dark mode — L sedang, kromatik rendah (anti neon). */
+  --primitive-teal-350: oklch(0.640 0.090 165);
+  --primitive-teal-550: oklch(0.540 0.100 165);
+  --primitive-amber-350: oklch(0.720 0.090 85);
+  --primitive-coral-350: oklch(0.640 0.090 25);
+  --primitive-coral-550: oklch(0.540 0.100 25);
+  --primitive-blue-350: oklch(0.640 0.090 240);
+  --primitive-neutral-550: oklch(0.550 0.020 260);
 
   /* Semantic - Light */
   --color-canvas: var(--primitive-neutral-50);
@@ -66,26 +74,26 @@
   --color-surface: var(--primitive-neutral-900);
   --color-surface-subtle: var(--primitive-neutral-800);
   --color-surface-muted: var(--primitive-neutral-700);
-  --color-border: var(--primitive-neutral-200);
+  --color-border: var(--primitive-neutral-550);
   --color-content: var(--primitive-neutral-50);
   --color-content-muted: var(--primitive-neutral-300);
   --color-content-inverse: var(--primitive-neutral-950);
-  --color-shadow-solid: var(--primitive-neutral-0);
+  --color-shadow-solid: var(--primitive-neutral-700);
 
-  --color-brand: var(--primitive-teal-300);
-  --color-brand-hover: var(--primitive-teal-500);
+  --color-brand: var(--primitive-teal-350);
+  --color-brand-hover: var(--primitive-teal-550);
   --color-brand-foreground: var(--primitive-neutral-950);
-  --color-accent: var(--primitive-amber-300);
+  --color-accent: var(--primitive-amber-350);
 
-  --color-income: var(--primitive-teal-300);
+  --color-income: var(--primitive-teal-350);
   --color-income-foreground: var(--primitive-neutral-950);
-  --color-expense: var(--primitive-coral-300);
+  --color-expense: var(--primitive-coral-350);
   --color-expense-foreground: var(--primitive-neutral-950);
-  --color-transfer: var(--primitive-blue-300);
+  --color-transfer: var(--primitive-blue-350);
   --color-transfer-foreground: var(--primitive-neutral-950);
-  --color-warning: var(--primitive-amber-300);
+  --color-warning: var(--primitive-amber-350);
   --color-warning-foreground: var(--primitive-neutral-950);
-  --color-danger: var(--primitive-coral-300);
+  --color-danger: var(--primitive-coral-350);
   --color-danger-foreground: var(--primitive-neutral-950);
 }
 

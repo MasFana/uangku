@@ -538,7 +538,7 @@
 					onclick={() => (transactionKind = 'expense')}
 					class="py-2 px-3 text-xs font-bold rounded-md border-2 min-h-[44px] transition-all {transactionKind ===
 					'expense'
-						? 'bg-expense text-white border-border shadow-hard-xs'
+						? 'bg-expense text-expense-foreground border-border shadow-hard-xs'
 						: 'border-border/30 hover:border-border text-content'}"
 				>
 					Pengeluaran
@@ -548,7 +548,7 @@
 					onclick={() => (transactionKind = 'income')}
 					class="py-2 px-3 text-xs font-bold rounded-md border-2 min-h-[44px] transition-all {transactionKind ===
 					'income'
-						? 'bg-income text-white border-border shadow-hard-xs'
+						? 'bg-income text-income-foreground border-border shadow-hard-xs'
 						: 'border-border/30 hover:border-border text-content'}"
 				>
 					Pemasukan

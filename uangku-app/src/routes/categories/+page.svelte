@@ -68,7 +68,7 @@
 			onclick={() => (activeTab = 'expense')}
 			class="px-3.5 py-2 rounded-md font-bold text-xs border-2 min-h-[44px] transition-all {activeTab ===
 			'expense'
-				? 'bg-expense text-white border-border shadow-hard-xs'
+				? 'bg-expense text-expense-foreground border-border shadow-hard-xs'
 				: 'border-border/30 hover:border-border text-content'}"
 		>
 			Pengeluaran
