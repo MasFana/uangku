@@ -6,7 +6,7 @@ A personal finance tracker for Indonesian rupiah, built as one SvelteKit app on 
 ![SvelteKit 3](https://img.shields.io/badge/SvelteKit-3-FF3E00.svg)
 ![Cloudflare Workers](https://img.shields.io/badge/Cloudflare-Workers-F38020.svg)
 ![D1 + Drizzle](https://img.shields.io/badge/D1-Drizzle-4B5563.svg)
-![CI](https://github.com/MasFana/uangku/actions/workflows/ci.yml/badge.svg)
+![CI](https://github.com/imamamacuuu/uangku/actions/workflows/ci.yml/badge.svg)
 
 Test deployment: https://uangku.fanaapi425.workers.dev. Register with any email address. Do not enter real financial data there, it is a machine used for smoke tests.
 
@@ -45,7 +45,7 @@ The screenshots above come from the test deployment with sample data in it.
 Node 22 or newer, npm, and a Cloudflare account for the deploy step.
 
 ```bash
-git clone https://github.com/MasFana/uangku.git
+git clone https://github.com/imamamacuuu/uangku.git
 cd uangku/uangku-app
 npm ci
 
