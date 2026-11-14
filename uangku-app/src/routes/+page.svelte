@@ -6,11 +6,15 @@
 	import CashflowChart from '$lib/components/CashflowChart.svelte';
 	import { formatRupiah, formatDateIndo } from '$lib/utils';
 	import type { PageData } from './$types';
+	import { syncEngine } from '$lib/client/sync/engine.svelte';
 
 	let { data }: { data: PageData } = $props();
 
+	// Reactive derivation: use local engine data when present, falling back to server SSR data
+	const wallets = $derived(syncEngine.wallets.length > 0 ? syncEngine.wallets : (data.wallets ?? []));
+	const localTotalBalance = $derived(wallets.reduce((sum, w) => sum + w.currentBalance, 0));
+	const totalBalance = $derived(syncEngine.wallets.length > 0 ? localTotalBalance : (data.summary.totalBalance ?? 0));
 	const summary = $derived(data.summary);
-	const wallets = $derived(data.wallets ?? []);
 	const hasWallets = $derived(wallets.length > 0);
 	const hasTransactions = $derived(summary.recentTransactions && summary.recentTransactions.length > 0);
 	const hasBreakdown = $derived(summary.categoryBreakdown && summary.categoryBreakdown.length > 0);
@@ -37,7 +41,7 @@
 					Total Saldo Bersih
 				</p>
 				<h1 class="text-2xl sm:text-3xl font-black font-mono tracking-tight tabular-nums text-brand-foreground truncate mt-0.5">
-					{formatRupiah(summary.totalBalance ?? 0)}
+					{formatRupiah(totalBalance)}
 				</h1>
 			</div>
 			<div class="shrink-0">
@@ -115,7 +119,7 @@
 								<span class="text-xs text-content-muted capitalize">{wallet.type}</span>
 							</div>
 							<p class="text-sm font-bold font-mono tabular-nums text-content">
-								{formatRupiah(wallet.balance ?? 0)}
+								{formatRupiah(wallet.currentBalance ?? 0)}
 							</p>
 						</div>
 					{/each}

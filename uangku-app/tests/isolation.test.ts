@@ -47,15 +47,17 @@ describe('Tenant Isolation Tests (D1 Integration)', () => {
 		const d1 = (await mf.getD1Database('APP_DB')) as unknown as D1Database;
 
 		// Execute schema migrations
-		const migrationPath = path.resolve('drizzle/0000_useful_black_widow.sql');
-		const sqlContent = fs.readFileSync(migrationPath, 'utf8');
-		const statements = sqlContent
-			.split('--> statement-breakpoint')
-			.map((s) => s.trim())
-			.filter(Boolean);
+		for (const file of ['drizzle/0000_useful_black_widow.sql', 'drizzle/0002_hlc_sync_rollups_triggers.sql']) {
+			const migrationPath = path.resolve(file);
+			const sqlContent = fs.readFileSync(migrationPath, 'utf8');
+			const statements = sqlContent
+				.split('--> statement-breakpoint')
+				.map((s) => s.trim())
+				.filter(Boolean);
 
-		for (const stmt of statements) {
-			await d1.prepare(stmt).run();
+			for (const stmt of statements) {
+				await d1.prepare(stmt).run();
+			}
 		}
 
 		db = drizzle(d1, { schema });

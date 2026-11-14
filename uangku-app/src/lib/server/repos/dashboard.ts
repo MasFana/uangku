@@ -1,150 +1,160 @@
-import { eq, and, gte, lte, desc } from 'drizzle-orm';
+import { eq, and, desc, isNull, sql } from 'drizzle-orm';
 import type { AppDatabase } from '../db/client';
-import { transactions, categories } from '../db/schema';
-import { WalletsRepo } from './wallets';
-import { calculateCashflow } from '../balance';
-
-export interface DashboardSummary {
-	totalBalance: number;
-	currentMonth: {
-		income: number;
-		expense: number;
-		net: number;
-	};
-	recentTransactions: Array<{
-		id: string;
-		walletId: string;
-		categoryId: string | null;
-		type: 'expense' | 'income' | 'transfer';
-		amount: number;
-		transferWalletId: string | null;
-		note: string | null;
-		occurredAt: string;
-	}>;
-	categoryBreakdown: Array<{
-		categoryId: string | null;
-		categoryName: string;
-		total: number;
-		color: string | null;
-	}>;
-	sixMonthTrend: Array<{
-		month: string; // YYYY-MM
-		income: number;
-		expense: number;
-	}>;
-}
+import { transactions, categories, wallets, monthlyRollups } from '../db/schema';
+import type { DashboardSummaryDTO, WalletDTO } from '$lib/shared/sync-contract';
 
 export class DashboardRepo {
 	constructor(private db: AppDatabase) {}
 
-	async getSummary(userId: string, now: Date = new Date()): Promise<DashboardSummary> {
-		const walletsRepo = new WalletsRepo(this.db);
-		const userWallets = await walletsRepo.list(userId, false);
-		const totalBalance = userWallets.reduce((sum, w) => sum + w.balance, 0);
-
-		// Current month boundaries (UTC ISO)
+	async getSummary(userId: string, now: Date = new Date()): Promise<DashboardSummaryDTO> {
 		const year = now.getUTCFullYear();
-		const month = now.getUTCMonth(); // 0-indexed
-		const startOfMonth = new Date(Date.UTC(year, month, 1, 0, 0, 0)).toISOString();
-		const startOfNextMonth = new Date(Date.UTC(year, month + 1, 1, 0, 0, 0)).toISOString();
+		const month = String(now.getUTCMonth() + 1).padStart(2, '0');
+		const currentYm = `${year}-${month}`;
 
-		// Current month transactions
-		const monthTxs = await this.db
-			.select()
-			.from(transactions)
+		// Compute 6-month string keys
+		const monthKeys: string[] = [];
+		for (let i = 5; i >= 0; i--) {
+			const d = new Date(Date.UTC(year, now.getUTCMonth() - i, 1));
+			const ym = `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}`;
+			monthKeys.push(ym);
+		}
+		const earliestYm = monthKeys[0];
+
+		// Single IPC Round-trip: Fetch wallets, monthly rollups, recent 10 transactions, and categories
+		const [walletRows, currentMonthRollup, trendRollup, recentTxs, categoryRows] =
+			await Promise.all([
+				this.db
+					.select()
+					.from(wallets)
+					.where(and(eq(wallets.userId, userId), eq(wallets.archived, false), isNull(wallets.deletedAt)))
+					.orderBy(wallets.createdAt),
+				this.db
+					.select({
+						type: monthlyRollups.type,
+						amount: sql<number>`coalesce(sum(${monthlyRollups.totalAmount}), 0)`
+					})
+					.from(monthlyRollups)
+					.where(and(eq(monthlyRollups.userId, userId), eq(monthlyRollups.ym, currentYm)))
+					.groupBy(monthlyRollups.type),
+				this.db
+					.select({
+						ym: monthlyRollups.ym,
+						type: monthlyRollups.type,
+						amount: sql<number>`coalesce(sum(${monthlyRollups.totalAmount}), 0)`
+					})
+					.from(monthlyRollups)
+					.where(
+						and(
+							eq(monthlyRollups.userId, userId),
+							sql`${monthlyRollups.ym} >= ${earliestYm}`
+						)
+					)
+					.groupBy(monthlyRollups.ym, monthlyRollups.type),
+				this.db
+					.select({
+						id: transactions.id,
+						walletId: transactions.walletId,
+						categoryId: transactions.categoryId,
+						type: transactions.type,
+						amount: transactions.amount,
+						transferWalletId: transactions.transferWalletId,
+						note: transactions.note,
+						occurredAt: transactions.occurredAt
+					})
+					.from(transactions)
+					.where(and(eq(transactions.userId, userId), isNull(transactions.deletedAt)))
+					.orderBy(desc(transactions.occurredAt), desc(transactions.id))
+					.limit(10),
+				this.db
+					.select({
+						id: categories.id,
+						name: categories.name,
+						color: categories.color
+					})
+					.from(categories)
+					.where(eq(categories.userId, userId))
+			]);
+
+		// Transform wallets
+		const walletsDto: WalletDTO[] = walletRows.map((w) => ({
+			id: w.id,
+			userId: w.userId,
+			name: w.name,
+			type: w.type,
+			initialBalance: w.initialBalance,
+			currentBalance: w.currentBalance,
+			icon: w.icon,
+			archived: Boolean(w.archived),
+			hlc: w.hlc,
+			serverUpdatedAt: w.serverUpdatedAt,
+			deletedAt: w.deletedAt,
+			createdAt: w.createdAt
+		}));
+
+		const totalBalance = walletsDto.reduce((sum, w) => sum + w.currentBalance, 0);
+
+		// Current Month Income / Expense from Rollup
+		let currentIncome = 0;
+		let currentExpense = 0;
+		for (const r of currentMonthRollup) {
+			if (r.type === 'income') currentIncome += Number(r.amount);
+			if (r.type === 'expense') currentExpense += Number(r.amount);
+		}
+
+		// 6-Month Trend
+		const trendMap = new Map<string, { income: number; expense: number }>();
+		for (const ym of monthKeys) {
+			trendMap.set(ym, { income: 0, expense: 0 });
+		}
+		for (const r of trendRollup) {
+			const entry = trendMap.get(r.ym);
+			if (entry) {
+				if (r.type === 'income') entry.income += Number(r.amount);
+				if (r.type === 'expense') entry.expense += Number(r.amount);
+			}
+		}
+		const sixMonthTrend = monthKeys.map((ym) => ({
+			month: ym,
+			income: trendMap.get(ym)?.income ?? 0,
+			expense: trendMap.get(ym)?.expense ?? 0
+		}));
+
+		// Category breakdown for current month from monthlyRollups
+		const categoryTotals = await this.db
+			.select({
+				categoryId: monthlyRollups.categoryId,
+				total: sql<number>`coalesce(sum(${monthlyRollups.totalAmount}), 0)`
+			})
+			.from(monthlyRollups)
 			.where(
 				and(
-					eq(transactions.userId, userId),
-					gte(transactions.occurredAt, startOfMonth),
-					lte(transactions.occurredAt, startOfNextMonth)
+					eq(monthlyRollups.userId, userId),
+					eq(monthlyRollups.ym, currentYm),
+					eq(monthlyRollups.type, 'expense')
 				)
-			);
+			)
+			.groupBy(monthlyRollups.categoryId);
 
-		const cashflow = calculateCashflow(monthTxs);
-
-		// Recent 10 transactions
-		const recentTxs = await this.db
-			.select()
-			.from(transactions)
-			.where(eq(transactions.userId, userId))
-			.orderBy(desc(transactions.occurredAt))
-			.limit(10);
-
-		// Category breakdown for current month expenses
-		const userCategories = await this.db
-			.select()
-			.from(categories)
-			.where(eq(categories.userId, userId));
-		const catMap = new Map(userCategories.map((c) => [c.id, c]));
-
-		const expenseByCat = new Map<string | null, number>();
-		for (const tx of monthTxs) {
-			if (tx.type === 'expense') {
-				const current = expenseByCat.get(tx.categoryId) ?? 0;
-				expenseByCat.set(tx.categoryId, current + tx.amount);
-			}
-		}
-
-		const categoryBreakdown = Array.from(expenseByCat.entries())
-			.map(([catId, total]) => {
-				const cat = catId ? catMap.get(catId) : null;
-				return {
-					categoryId: catId,
-					categoryName: cat ? cat.name : 'Tanpa Kategori',
-					total,
-					color: cat?.color ?? null
-				};
-			})
-			.sort((a, b) => b.total - a.total);
-
-		// Six-month trend
-		const sixMonthsAgo = new Date(Date.UTC(year, month - 5, 1, 0, 0, 0)).toISOString();
-		const sixMonthTxs = await this.db
-			.select({
-				type: transactions.type,
-				amount: transactions.amount,
-				occurredAt: transactions.occurredAt
-			})
-			.from(transactions)
-			.where(
-				and(eq(transactions.userId, userId), gte(transactions.occurredAt, sixMonthsAgo))
-			);
-
-		const trendMap = new Map<string, { income: number; expense: number }>();
-		for (let i = 5; i >= 0; i--) {
-			const d = new Date(Date.UTC(year, month - i, 1));
-			const key = `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}`;
-			trendMap.set(key, { income: 0, expense: 0 });
-		}
-
-		for (const tx of sixMonthTxs) {
-			const key = tx.occurredAt.slice(0, 7);
-			const bucket = trendMap.get(key);
-			if (bucket) {
-				if (tx.type === 'income') bucket.income += tx.amount;
-				else if (tx.type === 'expense') bucket.expense += tx.amount;
-			}
-		}
-
-		const sixMonthTrend = Array.from(trendMap.entries()).map(([m, vals]) => ({
-			month: m,
-			income: vals.income,
-			expense: vals.expense
-		}));
+		const catMap = new Map(categoryRows.map((c) => [c.id, c]));
+		const categoryBreakdown = categoryTotals.map((ct) => {
+			const cat = ct.categoryId ? catMap.get(ct.categoryId) : undefined;
+			return {
+				categoryId: ct.categoryId || null,
+				categoryName: cat?.name ?? 'Tanpa Kategori',
+				total: Number(ct.total),
+				color: cat?.color ?? null
+			};
+		});
 
 		return {
 			totalBalance,
-			currentMonth: cashflow,
-			recentTransactions: recentTxs.map((t) => ({
-				id: t.id,
-				walletId: t.walletId,
-				categoryId: t.categoryId,
-				type: t.type,
-				amount: t.amount,
-				transferWalletId: t.transferWalletId,
-				note: t.note,
-				occurredAt: t.occurredAt
-			})),
+			wallets: walletsDto,
+			currentMonth: {
+				income: currentIncome,
+				expense: currentExpense,
+				net: currentIncome - currentExpense
+			},
+			recentTransactions: recentTxs,
 			categoryBreakdown,
 			sixMonthTrend
 		};

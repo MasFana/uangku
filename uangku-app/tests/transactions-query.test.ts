@@ -48,7 +48,12 @@ describe('Transactions Filtering & Composite Cursor Pagination', () => {
 		});
 
 		const d1 = (await mf.getD1Database('APP_DB')) as unknown as D1Database;
-		const migrationPath = path.resolve('drizzle/0000_useful_black_widow.sql');
+		for (const file of ["drizzle/0000_useful_black_widow.sql", "drizzle/0002_hlc_sync_rollups_triggers.sql"]) {
+			const migrationPath = path.resolve(file);
+			const sqlContent = fs.readFileSync(migrationPath, "utf8");
+			const statements = sqlContent.split("--> statement-breakpoint").map((s) => s.trim()).filter(Boolean);
+			for (const stmt of statements) { await d1.prepare(stmt).run(); }
+		}
 		const sqlContent = fs.readFileSync(migrationPath, 'utf-8');
 		const statements = sqlContent
 			.split('--> statement-breakpoint')

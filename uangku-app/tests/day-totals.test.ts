@@ -59,15 +59,18 @@ describe('Day Totals Aggregations & Split Days Integration Tests', () => {
 		});
 
 		const d1 = (await mf.getD1Database('APP_DB')) as unknown as D1Database;
-		const migrationPath = path.resolve('drizzle/0000_useful_black_widow.sql');
-		const sqlContent = fs.readFileSync(migrationPath, 'utf8');
-		const statements = sqlContent
-			.split('--> statement-breakpoint')
-			.map((s) => s.trim())
-			.filter(Boolean);
+		// Execute schema migrations
+		for (const file of ['drizzle/0000_useful_black_widow.sql', 'drizzle/0002_hlc_sync_rollups_triggers.sql']) {
+			const migrationPath = path.resolve(file);
+			const sqlContent = fs.readFileSync(migrationPath, 'utf8');
+			const statements = sqlContent
+				.split('--> statement-breakpoint')
+				.map((s) => s.trim())
+				.filter(Boolean);
 
-		for (const stmt of statements) {
-			await d1.prepare(stmt).run();
+			for (const stmt of statements) {
+				await d1.prepare(stmt).run();
+			}
 		}
 
 		db = drizzle(d1, { schema });
@@ -207,9 +210,9 @@ describe('Day Totals Aggregations & Split Days Integration Tests', () => {
 			updatedAt: nowIso
 		});
 
-		// Insert in chunks of 10 to avoid any SQLite parameter ceiling
-		for (let i = 0; i < txValues.length; i += 10) {
-			const chunk = txValues.slice(i, i + 10);
+		// Insert in chunks of 5 to avoid any SQLite parameter ceiling (15 columns * 5 = 75 params)
+		for (let i = 0; i < txValues.length; i += 5) {
+			const chunk = txValues.slice(i, i + 5);
 			await db.insert(schema.transactions).values(chunk);
 		}
 	});

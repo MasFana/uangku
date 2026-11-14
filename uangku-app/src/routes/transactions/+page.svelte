@@ -10,14 +10,48 @@
 	import { page } from '$app/state';
 	import { goto } from '$app/navigation';
 	import type { PageData, ActionData } from './$types';
+	import { syncEngine } from '$lib/client/sync/engine.svelte';
 
-	let { data, form }: { data: PageData; form: ActionData } = $props();
+	let { data, form }: { data: PageData & { user?: { id: string } | null }; form: ActionData } = $props();
 
 	// Modal / form states
 	let showCreateModal = $state(page.url.searchParams.get('new') === '1');
 	let showFilterSheet = $state(false);
 	let transactionKind = $state<'expense' | 'income' | 'transfer'>('expense');
 	let editingTransaction = $state<any | null>(null);
+
+	// Zero-reload optimistic submission handler
+	async function handleOptimisticSubmit(e: SubmitEvent) {
+		const ledger = syncEngine.getLocalLedger();
+		if (!ledger || !data.user?.id) return; // Fall back to default HTML form POST
+
+		e.preventDefault();
+		const formEl = e.currentTarget as HTMLFormElement;
+		const formData = new FormData(formEl);
+
+		const walletId = formData.get('walletId') as string;
+		const categoryId = (formData.get('categoryId') as string) || null;
+		const amount = Math.abs(parseInt((formData.get('amount') as string) || '0', 10));
+		const transferWalletId = (formData.get('transferWalletId') as string) || null;
+		const note = (formData.get('note') as string) || null;
+		const occurredAt = (formData.get('occurredAt') as string) || new Date().toISOString();
+
+		if (!walletId || !amount) return;
+
+		await ledger.createTransaction(data.user.id, {
+			walletId,
+			categoryId,
+			type: transactionKind,
+			amount,
+			transferWalletId,
+			note,
+			occurredAt
+		});
+
+		showCreateModal = false;
+		formEl.reset();
+		syncEngine.triggerSync();
+	}
 
 	$effect(() => {
 		if (page.url.searchParams.get('new') === '1') {
@@ -565,7 +599,7 @@
 				</button>
 			</div>
 
-			<form method="POST" action="?/create" class="space-y-4">
+			<form method="POST" action="?/create" onsubmit={handleOptimisticSubmit} class="space-y-4">
 				<input type="hidden" name="formKind" value={transactionKind === 'transfer' ? 'transfer' : 'transaction'} />
 				<input type="hidden" name="type" value={transactionKind} />
 

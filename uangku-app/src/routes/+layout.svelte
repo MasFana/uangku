@@ -4,12 +4,20 @@
 	import { page } from '$app/state';
 	import Logo from '../lib/components/Logo.svelte';
 	import ThemeToggle from '../lib/components/ThemeToggle.svelte';
+	import { syncEngine } from '$lib/client/sync/engine.svelte';
+	import { onMount } from 'svelte';
 
 	interface Props {
 		children: Snippet;
 	}
 
 	let { children }: Props = $props();
+
+	onMount(() => {
+		if (page.data?.user?.id) {
+			syncEngine.init(page.data.user.id);
+		}
+	});
 
 	// Check if current route is an auth page (login/register) to simplify shell
 	const isAuthPage = $derived(
@@ -54,6 +62,8 @@
 
 <svelte:head>
 	<link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+	<link rel="manifest" href="/manifest.json" />
+	<meta name="theme-color" content="#10b981" />
 </svelte:head>
 
 <!-- Skip to content for keyboard accessibility (WCAG AA) -->
@@ -97,6 +107,18 @@
 				</nav>
 
 				<div class="flex items-center gap-2 shrink-0">
+					<!-- Offline / Sync Indicator Badge -->
+					{#if syncEngine.syncStatus === 'offline'}
+						<span class="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-bold bg-amber-500/20 text-amber-500 border border-amber-500/30" title="Bekerja offline">
+							<span class="w-1.5 h-1.5 rounded-full bg-amber-500"></span>
+							Offline
+						</span>
+					{:else if syncEngine.syncStatus === 'syncing'}
+						<span class="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-bold bg-brand/20 text-brand border border-brand/30" title="Sinkronisasi data...">
+							<span class="w-1.5 h-1.5 rounded-full bg-brand animate-pulse"></span>
+							Sync
+						</span>
+					{/if}
 					<ThemeToggle />
 				</div>
 			{/if}

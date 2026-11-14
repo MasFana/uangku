@@ -1,8 +1,7 @@
-import { eq, and, sql } from 'drizzle-orm';
+import { eq, and, isNull } from 'drizzle-orm';
 import type { AppDatabase } from '../db/client';
 import { wallets, type Wallet, type WalletType } from '../db/schema';
-import { transactions } from '../db/schema';
-import { calculateMultipleWalletBalances, calculateWalletBalance } from '../balance';
+import { nowHLC, createHLCState } from '$lib/shared/hlc';
 
 export interface WalletWithBalance extends Wallet {
 	balance: number;
@@ -25,28 +24,21 @@ export class WalletsRepo {
 	constructor(private db: AppDatabase) {}
 
 	async list(userId: string, includeArchived = false): Promise<WalletWithBalance[]> {
-		const whereClause = includeArchived
-			? eq(wallets.userId, userId)
-			: and(eq(wallets.userId, userId), eq(wallets.archived, false));
+		const conditions = [eq(wallets.userId, userId), isNull(wallets.deletedAt)];
+		if (!includeArchived) {
+			conditions.push(eq(wallets.archived, false));
+		}
 
-		const walletRows = await this.db.select().from(wallets).where(whereClause);
-		if (walletRows.length === 0) return [];
-
-		const userTransactions = await this.db
-			.select({
-				type: transactions.type,
-				amount: transactions.amount,
-				walletId: transactions.walletId,
-				transferWalletId: transactions.transferWalletId
-			})
-			.from(transactions)
-			.where(eq(transactions.userId, userId));
-
-		const balances = calculateMultipleWalletBalances(walletRows, userTransactions);
+		// Single-table query: strictly O(W) rows read, reading maintained current_balance
+		const walletRows = await this.db
+			.select()
+			.from(wallets)
+			.where(and(...conditions))
+			.orderBy(wallets.createdAt);
 
 		return walletRows.map((w) => ({
 			...w,
-			balance: balances.get(w.id) ?? w.initialBalance
+			balance: w.currentBalance
 		}));
 	}
 
@@ -54,37 +46,24 @@ export class WalletsRepo {
 		const [wallet] = await this.db
 			.select()
 			.from(wallets)
-			.where(and(eq(wallets.userId, userId), eq(wallets.id, id)))
+			.where(and(eq(wallets.userId, userId), eq(wallets.id, id), isNull(wallets.deletedAt)))
 			.limit(1);
 
 		if (!wallet) return null;
 
-		const userTransactions = await this.db
-			.select({
-				type: transactions.type,
-				amount: transactions.amount,
-				walletId: transactions.walletId,
-				transferWalletId: transactions.transferWalletId
-			})
-			.from(transactions)
-			.where(
-				and(
-					eq(transactions.userId, userId),
-					sql`(${transactions.walletId} = ${id} OR ${transactions.transferWalletId} = ${id})`
-				)
-			);
-
-		const balance = calculateWalletBalance(wallet.initialBalance, wallet.id, userTransactions);
-
 		return {
 			...wallet,
-			balance
+			balance: wallet.currentBalance
 		};
 	}
 
-	async create(userId: string, input: CreateWalletInput): Promise<Wallet> {
+	async create(userId: string, input: CreateWalletInput): Promise<WalletWithBalance> {
 		const id = crypto.randomUUID();
 		const now = new Date().toISOString();
+		const initialBalance = input.initialBalance ?? 0;
+		const serverNow = Date.now();
+		const hlc = nowHLC(createHLCState('srv'), serverNow);
+
 		const [created] = await this.db
 			.insert(wallets)
 			.values({
@@ -92,48 +71,81 @@ export class WalletsRepo {
 				userId,
 				name: input.name.trim(),
 				type: input.type,
-				initialBalance: Math.trunc(input.initialBalance ?? 0),
+				initialBalance,
+				currentBalance: initialBalance,
 				icon: input.icon ?? null,
 				archived: false,
+				hlc,
+				serverUpdatedAt: serverNow,
+				deletedAt: null,
 				createdAt: now
 			})
 			.returning();
 
-		return created;
+		return {
+			...created,
+			balance: created.currentBalance
+		};
 	}
 
-	async update(userId: string, id: string, input: UpdateWalletInput): Promise<Wallet | null> {
-		const patch: Partial<typeof wallets.$inferInsert> = {};
-		if (input.name !== undefined) patch.name = input.name.trim();
-		if (input.type !== undefined) patch.type = input.type;
-		if (input.icon !== undefined) patch.icon = input.icon;
+	async update(userId: string, id: string, input: UpdateWalletInput): Promise<WalletWithBalance | null> {
+		const existing = await this.getById(userId, id);
+		if (!existing) return null;
+
+		const serverNow = Date.now();
+		const hlc = nowHLC(createHLCState('srv'), serverNow);
 
 		const [updated] = await this.db
 			.update(wallets)
-			.set(patch)
+			.set({
+				...(input.name !== undefined ? { name: input.name.trim() } : {}),
+				...(input.type !== undefined ? { type: input.type } : {}),
+				...(input.icon !== undefined ? { icon: input.icon } : {}),
+				hlc,
+				serverUpdatedAt: serverNow
+			})
 			.where(and(eq(wallets.userId, userId), eq(wallets.id, id)))
 			.returning();
 
-		return updated ?? null;
+		return updated ? { ...updated, balance: updated.currentBalance } : null;
+	}
+
+	async setArchived(userId: string, id: string, archived: boolean): Promise<WalletWithBalance | null> {
+		const serverNow = Date.now();
+		const hlc = nowHLC(createHLCState('srv'), serverNow);
+
+		const [updated] = await this.db
+			.update(wallets)
+			.set({
+				archived,
+				hlc,
+				serverUpdatedAt: serverNow
+			})
+			.where(and(eq(wallets.userId, userId), eq(wallets.id, id)))
+			.returning();
+
+		return updated ? { ...updated, balance: updated.currentBalance } : null;
 	}
 
 	async archive(userId: string, id: string): Promise<boolean> {
-		const res = await this.db
-			.update(wallets)
-			.set({ archived: true })
-			.where(and(eq(wallets.userId, userId), eq(wallets.id, id)))
-			.returning({ id: wallets.id });
-
-		return res.length > 0;
+		const res = await this.setArchived(userId, id, true);
+		return Boolean(res);
 	}
 
-	async unarchive(userId: string, id: string): Promise<boolean> {
-		const res = await this.db
-			.update(wallets)
-			.set({ archived: false })
-			.where(and(eq(wallets.userId, userId), eq(wallets.id, id)))
-			.returning({ id: wallets.id });
+	async delete(userId: string, id: string): Promise<boolean> {
+		const serverNow = Date.now();
+		const hlc = nowHLC(createHLCState('srv'), serverNow);
 
-		return res.length > 0;
+		// Soft-delete tombstone
+		const result = await this.db
+			.update(wallets)
+			.set({
+				deletedAt: new Date().toISOString(),
+				hlc,
+				serverUpdatedAt: serverNow
+			})
+			.where(and(eq(wallets.userId, userId), eq(wallets.id, id)));
+
+		return (result.meta?.changes ?? 0) > 0;
 	}
 }

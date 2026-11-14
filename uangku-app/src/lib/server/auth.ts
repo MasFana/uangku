@@ -36,6 +36,12 @@ export function createAuth(env: AuthEnv, event?: RequestEvent) {
 				verification: schema.verifications
 			}
 		}),
+		session: {
+			cookieCache: {
+				enabled: true,
+				maxAge: 300 // 5 minutes stateless cookie cache -> 0 D1 reads on auth
+			}
+		},
 		databaseHooks: {
 			user: {
 				create: {

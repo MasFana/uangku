@@ -1,7 +1,9 @@
-import { eq, and, desc, lt, gte, lte, or, inArray, sql } from 'drizzle-orm';
+import { eq, and, desc, lt, gte, lte, or, inArray, sql, isNull } from 'drizzle-orm';
 import type { AppDatabase } from '../db/client';
 import { transactions, type Transaction, type TransactionType } from '../db/schema';
+import { dailyRollups } from '../db/schema';
 import { wallets } from '../db/schema';
+import { nowHLC, createHLCState } from '$lib/shared/hlc';
 
 export interface CreateTransactionInput {
 	walletId: string;
@@ -30,7 +32,7 @@ export interface ListTransactionsFilter {
 	startDate?: string;
 	endDate?: string;
 	from?: string; // YYYY-MM-DD
-	to?: string;   // YYYY-MM-DD
+	to?: string; // YYYY-MM-DD
 	cursor?: string; // format: "<occurredAt>|<id>" or legacy "<occurredAt>"
 	limit?: number;
 }
@@ -57,7 +59,8 @@ export class TransactionsRepo {
 		filter: ListTransactionsFilter = {}
 	): Promise<ListTransactionsResult> {
 		const limit = Math.min(Math.max(filter.limit ?? 20, 1), 100);
-		const conditions = [eq(transactions.userId, userId)];
+		// Invariant: zero SQL JOIN on master tables (wallets, categories)
+		const conditions = [eq(transactions.userId, userId), isNull(transactions.deletedAt)];
 
 		if (filter.walletId) {
 			conditions.push(eq(transactions.walletId, filter.walletId));
@@ -68,7 +71,7 @@ export class TransactionsRepo {
 		if (filter.type) {
 			conditions.push(eq(transactions.type, filter.type));
 		}
-		// from / to (inclusive YYYY-MM-DD) or fallback startDate / endDate
+
 		const startCondition = filter.from ? `${filter.from}T00:00:00.000Z` : filter.startDate;
 		if (startCondition) {
 			conditions.push(gte(transactions.occurredAt, startCondition));
@@ -114,8 +117,7 @@ export class TransactionsRepo {
 
 	/**
 	 * Aggregates daily income, expense, net and count for given UTC dates (YYYY-MM-DD).
-	 * Transfer is EXCLUDED from income, expense, and net, but COUNTED in count.
-	 * Filters by optional walletId, categoryId, and type to match current query view.
+	 * If no category filter is applied, reads directly from daily_rollups without scanning transactions.
 	 */
 	async getDayTotals(
 		userId: string,
@@ -126,83 +128,102 @@ export class TransactionsRepo {
 			return [];
 		}
 
-		const dayExpr = sql<string>`substr(${transactions.occurredAt}, 1, 10)`;
+		// Fast path: if no categoryId filter, query materialized daily_rollups!
+		if (!filter.categoryId && (!filter.type || filter.type !== 'transfer')) {
+			const conditions = [
+				eq(dailyRollups.userId, userId),
+				inArray(dailyRollups.ymd, dates)
+			];
+			if (filter.walletId) {
+				conditions.push(eq(dailyRollups.walletId, filter.walletId));
+			}
 
+			const rollupRows = await this.db
+				.select({
+					date: dailyRollups.ymd,
+					income: sql<number>`coalesce(sum(${dailyRollups.incomeAmount}), 0)`,
+					expense: sql<number>`coalesce(sum(${dailyRollups.expenseAmount}), 0)`,
+					count: sql<number>`coalesce(sum(${dailyRollups.txCount}), 0)`
+				})
+				.from(dailyRollups)
+				.where(and(...conditions))
+				.groupBy(dailyRollups.ymd);
+
+			return rollupRows
+				.map((r) => ({
+					date: r.date,
+					income: Number(r.income) || 0,
+					expense: Number(r.expense) || 0,
+					net: (Number(r.income) || 0) - (Number(r.expense) || 0),
+					count: Number(r.count) || 0
+				}))
+				.filter((r) => r.count > 0);
+		}
+
+		// Fallback for category filtering: query transactions with covering index
+		const dayExpr = sql<string>`substr(${transactions.occurredAt}, 1, 10)`;
 		const conditions = [
 			eq(transactions.userId, userId),
+			isNull(transactions.deletedAt),
 			inArray(dayExpr, dates)
 		];
 
-		if (filter.walletId) {
-			conditions.push(eq(transactions.walletId, filter.walletId));
-		}
-		if (filter.categoryId) {
-			conditions.push(eq(transactions.categoryId, filter.categoryId));
-		}
-		if (filter.type) {
-			conditions.push(eq(transactions.type, filter.type));
-		}
-
-		const incomeExpr = sql<number>`coalesce(sum(case when ${transactions.type} = 'income' then ${transactions.amount} else 0 end), 0)`;
-		const expenseExpr = sql<number>`coalesce(sum(case when ${transactions.type} = 'expense' then ${transactions.amount} else 0 end), 0)`;
-		const countExpr = sql<number>`count(*)`;
+		if (filter.walletId) conditions.push(eq(transactions.walletId, filter.walletId));
+		if (filter.categoryId) conditions.push(eq(transactions.categoryId, filter.categoryId));
+		if (filter.type) conditions.push(eq(transactions.type, filter.type));
 
 		const rows = await this.db
 			.select({
 				date: dayExpr,
-				income: incomeExpr,
-				expense: expenseExpr,
-				count: countExpr
+				income: sql<number>`coalesce(sum(case when ${transactions.type} = 'income' then ${transactions.amount} else 0 end), 0)`,
+				expense: sql<number>`coalesce(sum(case when ${transactions.type} = 'expense' then ${transactions.amount} else 0 end), 0)`,
+				count: sql<number>`count(*)`
 			})
 			.from(transactions)
 			.where(and(...conditions))
 			.groupBy(dayExpr);
 
-		return rows.map((r) => {
-			const income = Number(r.income) || 0;
-			const expense = Number(r.expense) || 0;
-			const count = Number(r.count) || 0;
-			return {
-				date: r.date,
-				income,
-				expense,
-				net: income - expense,
-				count
-			};
-		});
-	}
+		const map = new Map(
+			rows.map((r) => [
+				r.date,
+				{
+					date: r.date,
+					income: Number(r.income),
+					expense: Number(r.expense),
+					net: Number(r.income) - Number(r.expense),
+					count: Number(r.count)
+				}
+			])
+		);
 
-	/**
-	 * Checks if user has at least one transaction in database (unfiltered).
-	 */
-	async hasAnyTransaction(userId: string): Promise<boolean> {
-		const [first] = await this.db
-			.select({ id: transactions.id })
-			.from(transactions)
-			.where(eq(transactions.userId, userId))
-			.limit(1);
-
-		return Boolean(first);
+		return dates.map(
+			(d) =>
+				map.get(d) ?? {
+					date: d,
+					income: 0,
+					expense: 0,
+					net: 0,
+					count: 0
+				}
+		);
 	}
 
 	async getById(userId: string, id: string): Promise<Transaction | null> {
-		const [tx] = await this.db
+		const [row] = await this.db
 			.select()
 			.from(transactions)
-			.where(and(eq(transactions.userId, userId), eq(transactions.id, id)))
+			.where(and(eq(transactions.userId, userId), eq(transactions.id, id), isNull(transactions.deletedAt)))
 			.limit(1);
 
-		return tx ?? null;
+		return row ?? null;
 	}
 
 	async create(userId: string, input: CreateTransactionInput): Promise<Transaction> {
-		if (input.amount <= 0) {
-			throw new Error('Transaction amount must be positive integer');
-		}
-
 		const id = crypto.randomUUID();
 		const now = new Date().toISOString();
 		const occurredAt = input.occurredAt ?? now;
+		const serverNow = Date.now();
+		const hlc = nowHLC(createHLCState('srv'), serverNow);
 
 		const [created] = await this.db
 			.insert(transactions)
@@ -217,6 +238,9 @@ export class TransactionsRepo {
 				note: input.note ? input.note.trim() : null,
 				occurredAt,
 				receiptKey: input.receiptKey ?? null,
+				hlc,
+				serverUpdatedAt: serverNow,
+				deletedAt: null,
 				createdAt: now,
 				updatedAt: now
 			})
@@ -225,26 +249,31 @@ export class TransactionsRepo {
 		return created;
 	}
 
-	async update(userId: string, id: string, input: UpdateTransactionInput): Promise<Transaction | null> {
-		if (input.amount !== undefined && input.amount <= 0) {
-			throw new Error('Transaction amount must be positive integer');
-		}
+	async update(
+		userId: string,
+		id: string,
+		input: UpdateTransactionInput
+	): Promise<Transaction | null> {
+		const existing = await this.getById(userId, id);
+		if (!existing) return null;
 
 		const now = new Date().toISOString();
-		const values: Partial<typeof transactions.$inferInsert> = {
-			updatedAt: now
-		};
-
-		if (input.walletId !== undefined) values.walletId = input.walletId;
-		if (input.categoryId !== undefined) values.categoryId = input.categoryId;
-		if (input.amount !== undefined) values.amount = Math.trunc(input.amount);
-		if (input.note !== undefined) values.note = input.note ? input.note.trim() : null;
-		if (input.occurredAt !== undefined) values.occurredAt = input.occurredAt;
-		if (input.receiptKey !== undefined) values.receiptKey = input.receiptKey;
+		const serverNow = Date.now();
+		const hlc = nowHLC(createHLCState('srv'), serverNow);
 
 		const [updated] = await this.db
 			.update(transactions)
-			.set(values)
+			.set({
+				...(input.walletId !== undefined ? { walletId: input.walletId } : {}),
+				...(input.categoryId !== undefined ? { categoryId: input.categoryId } : {}),
+				...(input.amount !== undefined ? { amount: Math.trunc(input.amount) } : {}),
+				...(input.note !== undefined ? { note: input.note ? input.note.trim() : null } : {}),
+				...(input.occurredAt !== undefined ? { occurredAt: input.occurredAt } : {}),
+				...(input.receiptKey !== undefined ? { receiptKey: input.receiptKey } : {}),
+				hlc,
+				serverUpdatedAt: serverNow,
+				updatedAt: now
+			})
 			.where(and(eq(transactions.userId, userId), eq(transactions.id, id)))
 			.returning();
 
@@ -252,12 +281,21 @@ export class TransactionsRepo {
 	}
 
 	async delete(userId: string, id: string): Promise<boolean> {
-		const [deleted] = await this.db
-			.delete(transactions)
+		const serverNow = Date.now();
+		const hlc = nowHLC(createHLCState('srv'), serverNow);
+
+		// Soft-delete tombstone
+		const [updated] = await this.db
+			.update(transactions)
+			.set({
+				deletedAt: new Date().toISOString(),
+				hlc,
+				serverUpdatedAt: serverNow
+			})
 			.where(and(eq(transactions.userId, userId), eq(transactions.id, id)))
 			.returning({ id: transactions.id });
 
-		return Boolean(deleted);
+		return Boolean(updated);
 	}
 
 	async transfer(
@@ -281,7 +319,7 @@ export class TransactionsRepo {
 		const [sourceWallet] = await this.db
 			.select({ id: wallets.id })
 			.from(wallets)
-			.where(and(eq(wallets.userId, userId), eq(wallets.id, input.sourceWalletId)))
+			.where(and(eq(wallets.userId, userId), eq(wallets.id, input.sourceWalletId), isNull(wallets.deletedAt)))
 			.limit(1);
 		if (!sourceWallet) {
 			throw new Error('Source wallet not found');
@@ -290,7 +328,7 @@ export class TransactionsRepo {
 		const [targetWallet] = await this.db
 			.select({ id: wallets.id })
 			.from(wallets)
-			.where(and(eq(wallets.userId, userId), eq(wallets.id, input.targetWalletId)))
+			.where(and(eq(wallets.userId, userId), eq(wallets.id, input.targetWalletId), isNull(wallets.deletedAt)))
 			.limit(1);
 		if (!targetWallet) {
 			throw new Error('Target wallet not found');
@@ -299,6 +337,8 @@ export class TransactionsRepo {
 		const id = crypto.randomUUID();
 		const now = new Date().toISOString();
 		const occurredAt = input.occurredAt ?? now;
+		const serverNow = Date.now();
+		const hlc = nowHLC(createHLCState('srv'), serverNow);
 
 		const [created] = await this.db
 			.insert(transactions)
@@ -313,6 +353,9 @@ export class TransactionsRepo {
 				note: input.note ? input.note.trim() : null,
 				occurredAt,
 				receiptKey: null,
+				hlc,
+				serverUpdatedAt: serverNow,
+				deletedAt: null,
 				createdAt: now,
 				updatedAt: now
 			})
@@ -321,32 +364,35 @@ export class TransactionsRepo {
 		return created;
 	}
 
-	/**
-	 * Iterates through all transactions for a user in batches (e.g. 200 items).
-	 * Uses stable cursor (occurredAt, id) desc without loading everything into memory.
-	 */
-	async *iterateAll(
-		userId: string,
-		batchSize = 200
-	): AsyncGenerator<Transaction[], void, unknown> {
-		let cursor: string | undefined = undefined;
+	async countUserTransactions(userId: string): Promise<number> {
+		const [result] = await this.db
+			.select({ count: sql<number>`count(*)` })
+			.from(transactions)
+			.where(and(eq(transactions.userId, userId), isNull(transactions.deletedAt)));
 
+		return Number(result?.count ?? 0);
+	}
+
+	async hasAnyTransaction(userId: string): Promise<boolean> {
+		const [row] = await this.db
+			.select({ id: transactions.id })
+			.from(transactions)
+			.where(and(eq(transactions.userId, userId), isNull(transactions.deletedAt)))
+			.limit(1);
+
+		return Boolean(row);
+	}
+
+	async *iterateAll(userId: string, batchSize = 200): AsyncGenerator<Transaction[]> {
+		let cursor: string | undefined;
 		while (true) {
 			const result = await this.list(userId, {
-				cursor,
-				limit: batchSize
+				limit: batchSize,
+				cursor
 			});
-
-			if (result.items.length === 0) {
-				break;
-			}
-
+			if (result.items.length === 0) break;
 			yield result.items;
-
-			if (!result.hasMore || !result.nextCursor) {
-				break;
-			}
-
+			if (!result.hasMore || !result.nextCursor) break;
 			cursor = result.nextCursor;
 		}
 	}

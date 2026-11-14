@@ -102,10 +102,14 @@ describe('streamTransactionsCsv Service', () => {
 						return {
 							where() {
 								if (table === wallets) {
-									return Promise.resolve([
-										{ id: 'w-1', name: 'BCA Utama', initialBalance: 0, archived: false },
-										{ id: 'w-2', name: 'GoPay', initialBalance: 0, archived: false }
-									]);
+									return {
+										orderBy() {
+											return Promise.resolve([
+												{ id: 'w-1', name: 'BCA Utama', initialBalance: 0, currentBalance: 0, archived: false },
+												{ id: 'w-2', name: 'GoPay', initialBalance: 0, currentBalance: 0, archived: false }
+											]);
+										}
+									};
 								}
 								if (table === categories) {
 									return Promise.resolve([

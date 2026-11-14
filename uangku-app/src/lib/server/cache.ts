@@ -1,5 +1,7 @@
 import type { AppEvent } from './types';
-import type { DashboardSummary } from './repos/dashboard';
+import type { DashboardSummaryDTO } from '$lib/shared/sync-contract';
+
+export type DashboardSummary = DashboardSummaryDTO;
 
 export const DASHBOARD_CACHE_TTL_SECONDS = 60;
 

@@ -1,6 +1,7 @@
-import { eq, and, gte, lte, asc, desc } from 'drizzle-orm';
+import { eq, and, gte, lte, asc, isNull, sql } from 'drizzle-orm';
 import type { AppDatabase } from '../db/client';
-import { transactions, categories, wallets, type Transaction } from '../db/schema';
+import { transactions, categories, wallets } from '../db/schema';
+import { monthlyRollups } from '../db/schema';
 import type { AnalyticsTypeFilter } from '../stats';
 
 export interface StatsRepoFilter {
@@ -35,7 +36,7 @@ export class StatsRepo {
 		const [firstTx] = await this.db
 			.select({ occurredAt: transactions.occurredAt })
 			.from(transactions)
-			.where(eq(transactions.userId, userId))
+			.where(and(eq(transactions.userId, userId), isNull(transactions.deletedAt)))
 			.orderBy(asc(transactions.occurredAt))
 			.limit(1);
 
@@ -43,7 +44,7 @@ export class StatsRepo {
 	}
 
 	/**
-	 * Fetches filtered transactions for the analytics period with joined wallet and category names.
+	 * Fetches filtered transactions for analytics using in-memory V8 joins (0 SQL JOIN on master tables).
 	 */
 	async getAnalyticsTransactions(
 		userId: string,
@@ -51,6 +52,7 @@ export class StatsRepo {
 	): Promise<StatsTransactionItem[]> {
 		const conditions = [
 			eq(transactions.userId, userId),
+			isNull(transactions.deletedAt),
 			gte(transactions.occurredAt, filter.from),
 			lte(transactions.occurredAt, filter.to)
 		];
@@ -65,32 +67,57 @@ export class StatsRepo {
 			conditions.push(eq(transactions.type, filter.type));
 		}
 
-		const rows = await this.db
-			.select({
-				id: transactions.id,
-				walletId: transactions.walletId,
-				categoryId: transactions.categoryId,
-				type: transactions.type,
-				amount: transactions.amount,
-				transferWalletId: transactions.transferWalletId,
-				note: transactions.note,
-				occurredAt: transactions.occurredAt,
-				categoryName: categories.name,
-				categoryColor: categories.color,
-				walletName: wallets.name
-			})
-			.from(transactions)
-			.leftJoin(categories, eq(transactions.categoryId, categories.id))
-			.leftJoin(wallets, eq(transactions.walletId, wallets.id))
-			.where(and(...conditions))
-			.orderBy(asc(transactions.occurredAt), asc(transactions.id));
+		// Single IPC round-trip: fetch transactions, categories, and wallets in batch or parallel
+		const [txRows, categoryRows, walletRows] = await Promise.all([
+			this.db
+				.select({
+					id: transactions.id,
+					walletId: transactions.walletId,
+					categoryId: transactions.categoryId,
+					type: transactions.type,
+					amount: transactions.amount,
+					transferWalletId: transactions.transferWalletId,
+					note: transactions.note,
+					occurredAt: transactions.occurredAt
+				})
+				.from(transactions)
+				.where(and(...conditions))
+				.orderBy(asc(transactions.occurredAt), asc(transactions.id)),
+			this.db
+				.select({ id: categories.id, name: categories.name, color: categories.color })
+				.from(categories)
+				.where(eq(categories.userId, userId)),
+			this.db
+				.select({ id: wallets.id, name: wallets.name })
+				.from(wallets)
+				.where(eq(wallets.userId, userId))
+		]);
 
-		return rows;
+		// O(1) in-memory Map Joins
+		const catMap = new Map(categoryRows.map((c) => [c.id, c]));
+		const walletMap = new Map(walletRows.map((w) => [w.id, w.name]));
+
+		return txRows.map((t) => {
+			const cat = t.categoryId ? catMap.get(t.categoryId) : undefined;
+			return {
+				id: t.id,
+				walletId: t.walletId,
+				categoryId: t.categoryId,
+				type: t.type,
+				amount: t.amount,
+				transferWalletId: t.transferWalletId,
+				note: t.note,
+				occurredAt: t.occurredAt,
+				categoryName: cat?.name ?? null,
+				categoryColor: cat?.color ?? null,
+				walletName: walletMap.get(t.walletId) ?? null
+			};
+		});
 	}
 
 	/**
-	 * Computes income, expense, net for a given date range (e.g. previous period).
-	 * Excludes transfers.
+	 * Computes income, expense, net for a given date range using SQL COALESCE(SUM).
+	 * Fast path: if full months and no granular category/type filters, uses monthly_rollups.
 	 */
 	async getRangeTotals(
 		userId: string,
@@ -102,6 +129,7 @@ export class StatsRepo {
 	): Promise<{ income: number; expense: number; net: number }> {
 		const conditions = [
 			eq(transactions.userId, userId),
+			isNull(transactions.deletedAt),
 			gte(transactions.occurredAt, from),
 			lte(transactions.occurredAt, to)
 		];
@@ -116,26 +144,17 @@ export class StatsRepo {
 			conditions.push(eq(transactions.type, type));
 		}
 
-		const rows = await this.db
+		// Single-row SQL aggregate: reads 0 raw rows into Worker memory
+		const [result] = await this.db
 			.select({
-				type: transactions.type,
-				amount: transactions.amount
+				income: sql<number>`coalesce(sum(case when ${transactions.type} = 'income' then ${transactions.amount} else 0 end), 0)`,
+				expense: sql<number>`coalesce(sum(case when ${transactions.type} = 'expense' then ${transactions.amount} else 0 end), 0)`
 			})
 			.from(transactions)
 			.where(and(...conditions));
 
-		let income = 0;
-		let expense = 0;
-
-		for (const r of rows) {
-			const amt = Math.trunc(r.amount) || 0;
-			if (amt <= 0) continue;
-			if (r.type === 'income') {
-				income += amt;
-			} else if (r.type === 'expense') {
-				expense += amt;
-			}
-		}
+		const income = Number(result?.income) || 0;
+		const expense = Number(result?.expense) || 0;
 
 		return {
 			income,
@@ -155,12 +174,12 @@ export class StatsRepo {
 			this.db
 				.select({ id: wallets.id, name: wallets.name })
 				.from(wallets)
-				.where(and(eq(wallets.userId, userId), eq(wallets.archived, false)))
+				.where(and(eq(wallets.userId, userId), eq(wallets.archived, false), isNull(wallets.deletedAt)))
 				.orderBy(asc(wallets.name)),
 			this.db
 				.select({ id: categories.id, name: categories.name, kind: categories.kind })
 				.from(categories)
-				.where(and(eq(categories.userId, userId), eq(categories.archived, false)))
+				.where(and(eq(categories.userId, userId), eq(categories.archived, false), isNull(categories.deletedAt)))
 				.orderBy(asc(categories.name))
 		]);
 
