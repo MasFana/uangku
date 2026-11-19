@@ -5,7 +5,12 @@ import { env as workerEnv } from 'cloudflare:workers';
 import { svelteKitHandler } from 'better-auth/svelte-kit';
 import { createDb } from '$lib/server/db/client';
 import { createAuth } from '$lib/server/auth';
-import { isPublicRequest, loginRedirectUrl } from '$lib/server/guard';
+import {
+	isApiRoute,
+	isPublicRequest,
+	loginRedirectUrl,
+	unauthorizedApiResponse
+} from '$lib/server/guard';
 
 export const handle: Handle = async ({ event, resolve }) => {
 	// SvelteKit 3 membaca `event.platform` dari opsi `server.respond({ platform })`,
@@ -35,6 +40,7 @@ export const handle: Handle = async ({ event, resolve }) => {
 		}
 
 		if (!building && !event.locals.session && !isPublicRequest(event)) {
+			if (isApiRoute(event.url.pathname)) return unauthorizedApiResponse();
 			redirect(303, loginRedirectUrl(event.url.pathname, event.url.search));
 		}
 
@@ -42,6 +48,7 @@ export const handle: Handle = async ({ event, resolve }) => {
 	}
 
 	if (!building && !isPublicRequest(event)) {
+		if (isApiRoute(event.url.pathname)) return unauthorizedApiResponse();
 		redirect(303, loginRedirectUrl(event.url.pathname, event.url.search));
 	}
 
