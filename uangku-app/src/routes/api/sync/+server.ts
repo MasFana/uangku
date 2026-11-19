@@ -1,62 +1,169 @@
 import { json, type RequestHandler } from '@sveltejs/kit';
 import { assertUser } from '$lib/server/types';
-import { sql, gt, eq, and } from 'drizzle-orm';
+import { sql, gt, eq, and, inArray } from 'drizzle-orm';
 import { wallets, categories, transactions } from '$lib/server/db/schema';
 import type {
 	SyncRequestPayload,
 	SyncResponsePayload,
-	SyncPushMutation,
+	SyncRejectedMutation,
 	WalletDTO,
 	CategoryDTO,
 	TransactionDTO
 } from '$lib/shared/sync-contract';
-import { invalidateDashboardEdgeCache } from '$lib/server/cache/edge-cache';
-import { invalidateDashboard } from '$lib/server/cache';
+import { parseSyncMutation, type ParsedSyncMutation } from '$lib/server/validation';
+import { canonicalizeHLC } from '$lib/shared/hlc';
+
+// Wallets/categories first: transactions reference them (FK + balance triggers).
+const ORDER_WEIGHT: Record<string, number> = { wallets: 1, categories: 2, transactions: 3 };
+
+/** Owner lookup row: enough to decide `forbidden` without a second query. */
+type OwnerRow = { id: string; userId: string };
+
+/** Non-empty string or null (ids: `''` and absent are equivalent). */
+const str = (value: unknown): string | null => (typeof value === 'string' && value !== '' ? value : null);
+/** Any string verbatim, else null (free text columns may be empty). */
+const nullableStr = (value: unknown): string | null => (typeof value === 'string' ? value : null);
 
 export const POST: RequestHandler = async (event) => {
 	const { userId, db } = assertUser(event as any);
 	const body = (await event.request.json()) as SyncRequestPayload;
 
-	const clientCursor = body.cursor || 0;
-	const mutations: SyncPushMutation[] = body.mutations || [];
+	const clientCursor = Number.isFinite(body?.cursor) ? Number(body.cursor) : 0;
+	const rawMutations: unknown[] = Array.isArray(body?.mutations) ? body.mutations : [];
 
-	// Sort mutations topologically: wallets -> categories -> transactions
-	const orderWeight: Record<string, number> = {
-		wallets: 1,
-		categories: 2,
-		transactions: 3
-	};
-	mutations.sort((a, b) => (orderWeight[a.table] || 99) - (orderWeight[b.table] || 99));
+	const rejected: SyncRejectedMutation[] = [];
+	const canonicalized: SyncRejectedMutation[] = [];
+	const runnable: ParsedSyncMutation[] = [];
+
+	// 1. Valibot first: a malformed envelope/payload never reaches D1.
+	for (const raw of rawMutations) {
+		const parsed = parseSyncMutation(raw);
+		if (!parsed) {
+			rejected.push({ entityId: str((raw as Record<string, unknown>)?.entityId) ?? '', reason: 'invalid' });
+			continue;
+		}
+		runnable.push(parsed);
+	}
+
+	// 2. Topological order.
+	runnable.sort((a, b) => (ORDER_WEIGHT[a.table] ?? 99) - (ORDER_WEIGHT[b.table] ?? 99));
+
+	// 3. Ownership: resolve every referenced id in one round-trip per table.
+	//    A foreign wallet id must never reach the FK or the balance triggers.
+	const walletIds = new Set<string>();
+	const categoryIds = new Set<string>();
+	const transactionIds = new Set<string>();
+	for (const mut of runnable) {
+		if (mut.table === 'wallets') {
+			walletIds.add(mut.entityId);
+		} else if (mut.table === 'categories') {
+			categoryIds.add(mut.entityId);
+		} else {
+			transactionIds.add(mut.entityId);
+			const walletId = str(mut.payload.walletId);
+			const transferWalletId = str(mut.payload.transferWalletId);
+			const categoryId = str(mut.payload.categoryId);
+			if (walletId) walletIds.add(walletId);
+			if (transferWalletId) walletIds.add(transferWalletId);
+			if (categoryId) categoryIds.add(categoryId);
+		}
+	}
+
+	const ownerRows: OwnerRow[][] = await Promise.all([
+		walletIds.size > 0
+			? db
+				.select({ id: wallets.id, userId: wallets.userId })
+				.from(wallets)
+				.where(inArray(wallets.id, [...walletIds]))
+			: [],
+		categoryIds.size > 0
+			? db
+				.select({ id: categories.id, userId: categories.userId })
+				.from(categories)
+				.where(inArray(categories.id, [...categoryIds]))
+			: [],
+		transactionIds.size > 0
+			? db
+				.select({ id: transactions.id, userId: transactions.userId })
+				.from(transactions)
+				.where(inArray(transactions.id, [...transactionIds]))
+			: []
+	]);
+
+	const [walletOwners, categoryOwners, transactionOwners] = ownerRows;
+	const walletOwner = new Map(walletOwners.map((row) => [row.id, row.userId]));
+	const categoryOwner = new Map(categoryOwners.map((row) => [row.id, row.userId]));
+	const transactionOwner = new Map(transactionOwners.map((row) => [row.id, row.userId]));
+	const owns = (map: Map<string, string>, id: string | null) => id !== null && map.get(id) === userId;
 
 	const serverNow = Date.now();
-	let appliedCount = 0;
+	// A stale push still has to be visible to the pull that follows it, so the
+	// watermark bump must be strictly greater than the cursor just sent.
+	const bumpTimestamp = Math.max(serverNow, clientCursor + 1);
+	let applied = 0;
 
-	// Execute mutations atomically via D1 statements
-	for (const m of mutations) {
-		const payload = m.payload as any;
+	for (const mut of runnable) {
+		const { table, op, entityId, hlc: clientHlc, payload } = mut;
 
-		if (m.table === 'wallets') {
-			if (m.op === 'DELETE') {
-				await db
-					.update(wallets)
-					.set({
-						deletedAt: payload.deletedAt ?? new Date(serverNow).toISOString(),
-						hlc: m.hlc,
-						serverUpdatedAt: serverNow
-					})
-					.where(and(eq(wallets.userId, userId), eq(wallets.id, m.entityId)));
-				appliedCount++;
+		// 4. Ownership gate (before any write).
+		let owner: string | undefined;
+		if (table === 'wallets') {
+			owner = walletOwner.get(entityId);
+		} else if (table === 'categories') {
+			owner = categoryOwner.get(entityId);
+		} else {
+			owner = transactionOwner.get(entityId);
+			// References are checked for every UPSERT, not just new rows: an
+			// existing own transaction must not be re-pointed at a foreign wallet.
+			if (op === 'UPSERT') {
+				const walletId = str(payload.walletId);
+				const transferWalletId = str(payload.transferWalletId);
+				const categoryId = str(payload.categoryId);
+				const referencesOwned =
+					owns(walletOwner, walletId) &&
+					(transferWalletId === null || owns(walletOwner, transferWalletId)) &&
+					(categoryId === null || owns(categoryOwner, categoryId));
+				if (!referencesOwned) {
+					rejected.push({ entityId, reason: 'forbidden' });
+					continue;
+				}
+			}
+		}
+		if (owner !== undefined && owner !== userId) {
+			rejected.push({ entityId, reason: 'forbidden' });
+			continue;
+		}
+
+		// 5. Apply with an LWW guard. Zero rows returned = the write lost to a
+		//    newer HLC: report it stale and bump the winner so this client's
+		//    delta delivers it.
+		//    A client clock running ahead must not win every future conflict:
+		//    fold stamps past the server ceiling before the SQL guard sees them.
+		const writeHlc = canonicalizeHLC(clientHlc, serverNow);
+		const wasClamped = writeHlc !== clientHlc;
+		let wrote = 0;
+		if (table === 'wallets') {
+			if (op === 'DELETE') {
+				const rows = await db.all(sql`
+					UPDATE wallets SET
+						deleted_at = ${nullableStr(payload.deletedAt) ?? new Date(serverNow).toISOString()},
+						hlc = ${writeHlc},
+						server_updated_at = ${serverNow}
+					WHERE user_id = ${userId} AND id = ${entityId} AND ${writeHlc} > hlc
+					RETURNING id
+				`);
+				wrote = rows.length;
 			} else {
-				// UPSERT with LWW check
-				await db.run(sql`
+				const rows = await db.all(sql`
 					INSERT INTO wallets (
 						id, user_id, name, type, initial_balance, current_balance,
 						icon, archived, hlc, server_updated_at, deleted_at, created_at
 					) VALUES (
-						${payload.id}, ${userId}, ${payload.name}, ${payload.type},
+						${entityId}, ${userId}, ${nullableStr(payload.name)}, ${nullableStr(payload.type)},
 						${payload.initialBalance ?? 0}, ${payload.currentBalance ?? payload.initialBalance ?? 0},
-						${payload.icon ?? null}, ${payload.archived ? 1 : 0}, ${m.hlc},
-						${serverNow}, ${payload.deletedAt ?? null}, ${payload.createdAt ?? new Date(serverNow).toISOString()}
+						${nullableStr(payload.icon)}, ${payload.archived ? 1 : 0}, ${writeHlc},
+						${serverNow}, ${nullableStr(payload.deletedAt)},
+						${nullableStr(payload.createdAt) ?? new Date(serverNow).toISOString()}
 					)
 					ON CONFLICT(id) DO UPDATE SET
 						name = excluded.name,
@@ -67,30 +174,32 @@ export const POST: RequestHandler = async (event) => {
 						server_updated_at = excluded.server_updated_at,
 						deleted_at = excluded.deleted_at
 					WHERE wallets.user_id = ${userId} AND excluded.hlc > wallets.hlc
+					RETURNING id
 				`);
-				appliedCount++;
+				wrote = rows.length;
 			}
-		} else if (m.table === 'categories') {
-			if (m.op === 'DELETE') {
-				await db
-					.update(categories)
-					.set({
-						deletedAt: payload.deletedAt ?? new Date(serverNow).toISOString(),
-						hlc: m.hlc,
-						serverUpdatedAt: serverNow
-					})
-					.where(and(eq(categories.userId, userId), eq(categories.id, m.entityId)));
-				appliedCount++;
+		} else if (table === 'categories') {
+			if (op === 'DELETE') {
+				const rows = await db.all(sql`
+					UPDATE categories SET
+						deleted_at = ${nullableStr(payload.deletedAt) ?? new Date(serverNow).toISOString()},
+						hlc = ${writeHlc},
+						server_updated_at = ${serverNow}
+					WHERE user_id = ${userId} AND id = ${entityId} AND ${writeHlc} > hlc
+					RETURNING id
+				`);
+				wrote = rows.length;
 			} else {
-				await db.run(sql`
+				const rows = await db.all(sql`
 					INSERT INTO categories (
 						id, user_id, name, kind, icon, color,
 						archived, hlc, server_updated_at, deleted_at, created_at
 					) VALUES (
-						${payload.id}, ${userId}, ${payload.name}, ${payload.kind},
-						${payload.icon ?? null}, ${payload.color ?? null},
-						${payload.archived ? 1 : 0}, ${m.hlc},
-						${serverNow}, ${payload.deletedAt ?? null}, ${payload.createdAt ?? new Date(serverNow).toISOString()}
+						${entityId}, ${userId}, ${nullableStr(payload.name)}, ${nullableStr(payload.kind)},
+						${nullableStr(payload.icon)}, ${nullableStr(payload.color)},
+						${payload.archived ? 1 : 0}, ${writeHlc},
+						${serverNow}, ${nullableStr(payload.deletedAt)},
+						${nullableStr(payload.createdAt) ?? new Date(serverNow).toISOString()}
 					)
 					ON CONFLICT(id) DO UPDATE SET
 						name = excluded.name,
@@ -102,32 +211,34 @@ export const POST: RequestHandler = async (event) => {
 						server_updated_at = excluded.server_updated_at,
 						deleted_at = excluded.deleted_at
 					WHERE categories.user_id = ${userId} AND excluded.hlc > categories.hlc
+					RETURNING id
 				`);
-				appliedCount++;
+				wrote = rows.length;
 			}
-		} else if (m.table === 'transactions') {
-			if (m.op === 'DELETE') {
-				await db
-					.update(transactions)
-					.set({
-						deletedAt: payload.deletedAt ?? new Date(serverNow).toISOString(),
-						hlc: m.hlc,
-						serverUpdatedAt: serverNow
-					})
-					.where(and(eq(transactions.userId, userId), eq(transactions.id, m.entityId)));
-				appliedCount++;
+		} else {
+			if (op === 'DELETE') {
+				const rows = await db.all(sql`
+					UPDATE transactions SET
+						deleted_at = ${nullableStr(payload.deletedAt) ?? new Date(serverNow).toISOString()},
+						hlc = ${writeHlc},
+						server_updated_at = ${serverNow}
+					WHERE user_id = ${userId} AND id = ${entityId} AND ${writeHlc} > hlc
+					RETURNING id
+				`);
+				wrote = rows.length;
 			} else {
-				await db.run(sql`
+				const rows = await db.all(sql`
 					INSERT INTO transactions (
 						id, user_id, wallet_id, category_id, type, amount,
 						transfer_wallet_id, note, occurred_at, receipt_key,
 						hlc, server_updated_at, deleted_at, created_at, updated_at
 					) VALUES (
-						${payload.id}, ${userId}, ${payload.walletId}, ${payload.categoryId ?? null},
-						${payload.type}, ${payload.amount}, ${payload.transferWalletId ?? null},
-						${payload.note ?? null}, ${payload.occurredAt}, ${payload.receiptKey ?? null},
-						${m.hlc}, ${serverNow}, ${payload.deletedAt ?? null},
-						${payload.createdAt ?? new Date(serverNow).toISOString()}, ${new Date(serverNow).toISOString()}
+						${entityId}, ${userId}, ${nullableStr(payload.walletId)}, ${str(payload.categoryId)},
+						${nullableStr(payload.type)}, ${payload.amount}, ${str(payload.transferWalletId)},
+						${nullableStr(payload.note)}, ${nullableStr(payload.occurredAt)}, ${nullableStr(payload.receiptKey)},
+						${writeHlc}, ${serverNow}, ${nullableStr(payload.deletedAt)},
+						${nullableStr(payload.createdAt) ?? new Date(serverNow).toISOString()},
+						${nullableStr(payload.updatedAt) ?? new Date(serverNow).toISOString()}
 					)
 					ON CONFLICT(id) DO UPDATE SET
 						wallet_id = excluded.wallet_id,
@@ -143,9 +254,26 @@ export const POST: RequestHandler = async (event) => {
 						deleted_at = excluded.deleted_at,
 						updated_at = excluded.updated_at
 					WHERE transactions.user_id = ${userId} AND excluded.hlc > transactions.hlc
+					RETURNING id
 				`);
-				appliedCount++;
+				wrote = rows.length;
 			}
+		}
+
+		if (wrote > 0) {
+			applied++;
+			// Applied, but the stored stamp is not the client's: tell it to adopt
+			// the canonical row. Not `rejected` — the write did land.
+			if (wasClamped) canonicalized.push({ entityId, reason: 'clock_skew' });
+		} else {
+			rejected.push({ entityId, reason: 'stale' });
+			// The refused write left the winner's watermark untouched, so bump it:
+			// the winner must land in this client's delta. `table` comes from the
+			// validated envelope, never from raw input.
+			await db.run(sql`
+				UPDATE ${sql.identifier(table)} SET server_updated_at = ${bumpTimestamp}
+				WHERE user_id = ${userId} AND id = ${entityId}
+			`);
 		}
 	}
 
@@ -165,31 +293,42 @@ export const POST: RequestHandler = async (event) => {
 			.where(and(eq(transactions.userId, userId), gt(transactions.serverUpdatedAt, clientCursor)))
 	]);
 
-	// Invalidate edge cache asynchronously if mutations occurred
-	if (mutations.length > 0) {
-		const backgroundPromise = Promise.all([
-			invalidateDashboardEdgeCache(userId),
-			invalidateDashboard(event as any, userId)
-		]);
-		const ctx = (event.platform as any)?.context;
-		if (ctx?.waitUntil) {
-			ctx.waitUntil(backgroundPromise);
-		}
-	}
+	const deltaWalletsDto = deltaWallets.map((w) => ({ ...w, archived: Boolean(w.archived) })) as unknown as WalletDTO[];
+	const deltaCategoriesDto = deltaCategories.map((c) => ({
+		...c,
+		archived: Boolean(c.archived)
+	})) as unknown as CategoryDTO[];
+	const deltaTransactionsDto = deltaTransactions as unknown as TransactionDTO[];
+
+	// The cursor must clear every row we just handed out, otherwise a row
+	// written by another device in the same millisecond is skipped forever.
+	let maxDelta = 0;
+	for (const row of deltaWalletsDto) if (row.serverUpdatedAt > maxDelta) maxDelta = row.serverUpdatedAt;
+	for (const row of deltaCategoriesDto) if (row.serverUpdatedAt > maxDelta) maxDelta = row.serverUpdatedAt;
+	for (const row of deltaTransactionsDto) if (row.serverUpdatedAt > maxDelta) maxDelta = row.serverUpdatedAt;
+	const newCursor = Math.max(serverNow, maxDelta, clientCursor);
+
+	console.log(
+		JSON.stringify({
+			event: 'sync_cycle',
+			userId,
+			applied,
+			rejected: rejected.length,
+			cursor: clientCursor,
+			newCursor
+		})
+	);
 
 	const responsePayload: SyncResponsePayload = {
-		newCursor: serverNow,
-		appliedCount,
+		newCursor,
+		serverNow,
+		applied,
+		rejected,
+		canonicalized,
 		delta: {
-			wallets: deltaWallets.map((w) => ({
-				...w,
-				archived: Boolean(w.archived)
-			})) as unknown as WalletDTO[],
-			categories: deltaCategories.map((c) => ({
-				...c,
-				archived: Boolean(c.archived)
-			})) as unknown as CategoryDTO[],
-			transactions: deltaTransactions as unknown as TransactionDTO[]
+			wallets: deltaWalletsDto,
+			categories: deltaCategoriesDto,
+			transactions: deltaTransactionsDto
 		}
 	};
 

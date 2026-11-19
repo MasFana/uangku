@@ -115,9 +115,19 @@ export interface SyncRequestPayload {
 	mutations: SyncPushMutation[];
 }
 
+export type SyncRejectionReason = 'stale' | 'invalid' | 'forbidden' | 'clock_skew';
+
+export interface SyncRejectedMutation {
+	entityId: string;
+	reason: SyncRejectionReason;
+}
+
 export interface SyncResponsePayload {
 	newCursor: number;
-	appliedCount: number;
+	serverNow: number; // server clock when the response was built; clients correct their HLC offset with it
+	applied: number;
+	rejected: SyncRejectedMutation[];
+	canonicalized: SyncRejectedMutation[]; // written, but the server replaced an out-of-range hlc; the client must adopt the row
 	delta: {
 		wallets: WalletDTO[];
 		categories: CategoryDTO[];

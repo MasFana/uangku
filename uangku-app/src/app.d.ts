@@ -8,7 +8,6 @@ declare global {
 			env?: Cloudflare.Env;
 			db?: AppDatabase;
 			r2?: R2Bucket;
-			kv?: KVNamespace;
 			auth?: AuthInstance;
 			user?: AuthInstance['$Infer']['Session']['user'] | null;
 			session?: AuthInstance['$Infer']['Session']['session'] | null;
@@ -24,5 +23,5 @@ declare global {
 	}
 }
 
-export {};
+export { };
 

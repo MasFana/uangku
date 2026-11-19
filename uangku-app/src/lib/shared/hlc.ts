@@ -8,6 +8,12 @@ export interface HLCState {
 	nodeId: string;
 	lastPhysicalMs: number;
 	counter: number;
+	/**
+	 * Correction applied on top of the device clock when stamping. Learned from the
+	 * server clock on every successful sync, so a device whose clock is fast or slow
+	 * does not win (or lose) every future conflict. 0 = trust the device clock.
+	 */
+	clockOffsetMs: number;
 }
 
 export function createHLCState(nodeId: string): HLCState {
@@ -16,8 +22,14 @@ export function createHLCState(nodeId: string): HLCState {
 	return {
 		nodeId: cleanNodeId,
 		lastPhysicalMs: 0,
-		counter: 0
+		counter: 0,
+		clockOffsetMs: 0
 	};
+}
+
+/** Device clock corrected by the learned server offset; the default stamping time. */
+export function clockNow(state: HLCState): number {
+	return Date.now() + state.clockOffsetMs;
 }
 
 function formatHLC(timestampMs: number, counter: number, nodeId: string): string {
@@ -37,7 +49,7 @@ export function parseHLC(hlc: string): { timestampMs: number; counter: number; n
 	return { timestampMs, counter, nodeId };
 }
 
-export function nowHLC(state: HLCState, physicalNowMs: number = Date.now()): string {
+export function nowHLC(state: HLCState, physicalNowMs: number = clockNow(state)): string {
 	const pt = physicalNowMs;
 	if (pt > state.lastPhysicalMs) {
 		state.lastPhysicalMs = pt;
@@ -48,7 +60,7 @@ export function nowHLC(state: HLCState, physicalNowMs: number = Date.now()): str
 	return formatHLC(state.lastPhysicalMs, state.counter, state.nodeId);
 }
 
-export function receiveHLC(state: HLCState, remoteHlc: string, physicalNowMs: number = Date.now()): string {
+export function receiveHLC(state: HLCState, remoteHlc: string, physicalNowMs: number = clockNow(state)): string {
 	const parsed = parseHLC(remoteHlc);
 	if (!parsed) {
 		return nowHLC(state, physicalNowMs);
@@ -83,4 +95,32 @@ export function compareHLC(a: string, b: string): -1 | 0 | 1 {
 	if (!a) return -1;
 	if (!b) return 1;
 	return a < b ? -1 : 1;
+}
+
+/**
+ * How far ahead of the server clock a client stamp may be before the server folds it back.
+ * A real clock drifts by seconds, so a minute of tolerance is plenty; a larger window would
+ * park accepted stamps in the future for that whole window.
+ */
+export const MAX_HLC_FUTURE_SKEW_MS = 60_000;
+
+/**
+ * Fold a stamp whose physical time is more than `maxSkewMs` past `serverNowMs` back to
+ * `serverNowMs` itself, keeping counter and node id so the tie-break stays stable.
+ *
+ * The fold target is the server clock, not the tolerance ceiling. A stamp parked at the
+ * ceiling sits in the future for the rest of the window, so every normal edit of that same
+ * row during that window compares older, loses the LWW guard and is rejected as stale —
+ * the row would stay unwritable for the length of the window.
+ *
+ * An unparseable or in-range stamp is returned unchanged.
+ */
+export function canonicalizeHLC(
+	hlc: string,
+	serverNowMs: number,
+	maxSkewMs: number = MAX_HLC_FUTURE_SKEW_MS
+): string {
+	const parsed = parseHLC(hlc);
+	if (!parsed || parsed.timestampMs <= serverNowMs + maxSkewMs) return hlc;
+	return formatHLC(serverNowMs, parsed.counter, parsed.nodeId);
 }

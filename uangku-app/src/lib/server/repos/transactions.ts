@@ -1,7 +1,6 @@
-import { eq, and, desc, lt, gte, lte, or, inArray, sql, isNull } from 'drizzle-orm';
+import { eq, and, desc, lt, or, isNull } from 'drizzle-orm';
 import type { AppDatabase } from '../db/client';
 import { transactions, type Transaction, type TransactionType } from '../db/schema';
-import { dailyRollups } from '../db/schema';
 import { wallets } from '../db/schema';
 import { nowHLC, createHLCState } from '$lib/shared/hlc';
 
@@ -26,13 +25,6 @@ export interface UpdateTransactionInput {
 }
 
 export interface ListTransactionsFilter {
-	walletId?: string;
-	categoryId?: string;
-	type?: TransactionType;
-	startDate?: string;
-	endDate?: string;
-	from?: string; // YYYY-MM-DD
-	to?: string; // YYYY-MM-DD
 	cursor?: string; // format: "<occurredAt>|<id>" or legacy "<occurredAt>"
 	limit?: number;
 }
@@ -43,16 +35,8 @@ export interface ListTransactionsResult {
 	hasMore: boolean;
 }
 
-export interface DayTotalResult {
-	date: string; // 'YYYY-MM-DD'
-	income: number;
-	expense: number;
-	net: number;
-	count: number;
-}
-
 export class TransactionsRepo {
-	constructor(private db: AppDatabase) {}
+	constructor(private db: AppDatabase) { }
 
 	async list(
 		userId: string,
@@ -62,24 +46,6 @@ export class TransactionsRepo {
 		// Invariant: zero SQL JOIN on master tables (wallets, categories)
 		const conditions = [eq(transactions.userId, userId), isNull(transactions.deletedAt)];
 
-		if (filter.walletId) {
-			conditions.push(eq(transactions.walletId, filter.walletId));
-		}
-		if (filter.categoryId) {
-			conditions.push(eq(transactions.categoryId, filter.categoryId));
-		}
-		if (filter.type) {
-			conditions.push(eq(transactions.type, filter.type));
-		}
-
-		const startCondition = filter.from ? `${filter.from}T00:00:00.000Z` : filter.startDate;
-		if (startCondition) {
-			conditions.push(gte(transactions.occurredAt, startCondition));
-		}
-		const endCondition = filter.to ? `${filter.to}T23:59:59.999Z` : filter.endDate;
-		if (endCondition) {
-			conditions.push(lte(transactions.occurredAt, endCondition));
-		}
 		if (filter.cursor) {
 			const pipeIdx = filter.cursor.indexOf('|');
 			if (pipeIdx !== -1) {
@@ -113,99 +79,6 @@ export class TransactionsRepo {
 		}
 
 		return { items, nextCursor, hasMore };
-	}
-
-	/**
-	 * Aggregates daily income, expense, net and count for given UTC dates (YYYY-MM-DD).
-	 * If no category filter is applied, reads directly from daily_rollups without scanning transactions.
-	 */
-	async getDayTotals(
-		userId: string,
-		dates: string[],
-		filter: { walletId?: string; categoryId?: string; type?: TransactionType } = {}
-	): Promise<DayTotalResult[]> {
-		if (dates.length === 0) {
-			return [];
-		}
-
-		// Fast path: if no categoryId filter, query materialized daily_rollups!
-		if (!filter.categoryId && (!filter.type || filter.type !== 'transfer')) {
-			const conditions = [
-				eq(dailyRollups.userId, userId),
-				inArray(dailyRollups.ymd, dates)
-			];
-			if (filter.walletId) {
-				conditions.push(eq(dailyRollups.walletId, filter.walletId));
-			}
-
-			const rollupRows = await this.db
-				.select({
-					date: dailyRollups.ymd,
-					income: sql<number>`coalesce(sum(${dailyRollups.incomeAmount}), 0)`,
-					expense: sql<number>`coalesce(sum(${dailyRollups.expenseAmount}), 0)`,
-					count: sql<number>`coalesce(sum(${dailyRollups.txCount}), 0)`
-				})
-				.from(dailyRollups)
-				.where(and(...conditions))
-				.groupBy(dailyRollups.ymd);
-
-			return rollupRows
-				.map((r) => ({
-					date: r.date,
-					income: Number(r.income) || 0,
-					expense: Number(r.expense) || 0,
-					net: (Number(r.income) || 0) - (Number(r.expense) || 0),
-					count: Number(r.count) || 0
-				}))
-				.filter((r) => r.count > 0);
-		}
-
-		// Fallback for category filtering: query transactions with covering index
-		const dayExpr = sql<string>`substr(${transactions.occurredAt}, 1, 10)`;
-		const conditions = [
-			eq(transactions.userId, userId),
-			isNull(transactions.deletedAt),
-			inArray(dayExpr, dates)
-		];
-
-		if (filter.walletId) conditions.push(eq(transactions.walletId, filter.walletId));
-		if (filter.categoryId) conditions.push(eq(transactions.categoryId, filter.categoryId));
-		if (filter.type) conditions.push(eq(transactions.type, filter.type));
-
-		const rows = await this.db
-			.select({
-				date: dayExpr,
-				income: sql<number>`coalesce(sum(case when ${transactions.type} = 'income' then ${transactions.amount} else 0 end), 0)`,
-				expense: sql<number>`coalesce(sum(case when ${transactions.type} = 'expense' then ${transactions.amount} else 0 end), 0)`,
-				count: sql<number>`count(*)`
-			})
-			.from(transactions)
-			.where(and(...conditions))
-			.groupBy(dayExpr);
-
-		const map = new Map(
-			rows.map((r) => [
-				r.date,
-				{
-					date: r.date,
-					income: Number(r.income),
-					expense: Number(r.expense),
-					net: Number(r.income) - Number(r.expense),
-					count: Number(r.count)
-				}
-			])
-		);
-
-		return dates.map(
-			(d) =>
-				map.get(d) ?? {
-					date: d,
-					income: 0,
-					expense: 0,
-					net: 0,
-					count: 0
-				}
-		);
 	}
 
 	async getById(userId: string, id: string): Promise<Transaction | null> {
@@ -362,25 +235,6 @@ export class TransactionsRepo {
 			.returning();
 
 		return created;
-	}
-
-	async countUserTransactions(userId: string): Promise<number> {
-		const [result] = await this.db
-			.select({ count: sql<number>`count(*)` })
-			.from(transactions)
-			.where(and(eq(transactions.userId, userId), isNull(transactions.deletedAt)));
-
-		return Number(result?.count ?? 0);
-	}
-
-	async hasAnyTransaction(userId: string): Promise<boolean> {
-		const [row] = await this.db
-			.select({ id: transactions.id })
-			.from(transactions)
-			.where(and(eq(transactions.userId, userId), isNull(transactions.deletedAt)))
-			.limit(1);
-
-		return Boolean(row);
 	}
 
 	async *iterateAll(userId: string, batchSize = 200): AsyncGenerator<Transaction[]> {

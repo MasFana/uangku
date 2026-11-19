@@ -20,7 +20,6 @@ export const handle: Handle = async ({ event, resolve }) => {
 	if (env?.APP_DB) {
 		event.locals.db = createDb(env.APP_DB);
 		event.locals.r2 = env.RECEIPTS;
-		event.locals.kv = env.CACHE;
 
 		const auth = createAuth(env as unknown as Parameters<typeof createAuth>[0], event);
 		event.locals.auth = auth;

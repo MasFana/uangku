@@ -1,6 +1,7 @@
 import { eq, and } from 'drizzle-orm';
 import type { AppDatabase } from '../db/client';
 import { categories, type Category, type CategoryKind } from '../db/schema';
+import { nowHLC, createHLCState } from '$lib/shared/hlc';
 
 export interface CreateCategoryInput {
 	name: string;
@@ -17,7 +18,7 @@ export interface UpdateCategoryInput {
 }
 
 export class CategoriesRepo {
-	constructor(private db: AppDatabase) {}
+	constructor(private db: AppDatabase) { }
 
 	async list(
 		userId: string,
@@ -51,6 +52,8 @@ export class CategoriesRepo {
 	async create(userId: string, input: CreateCategoryInput): Promise<Category> {
 		const id = crypto.randomUUID();
 		const now = new Date().toISOString();
+		const serverNow = Date.now();
+		const hlc = nowHLC(createHLCState('srv'), serverNow);
 		const [created] = await this.db
 			.insert(categories)
 			.values({
@@ -61,6 +64,8 @@ export class CategoriesRepo {
 				icon: input.icon ?? null,
 				color: input.color ?? null,
 				archived: false,
+				hlc,
+				serverUpdatedAt: serverNow,
 				createdAt: now
 			})
 			.returning();
@@ -75,6 +80,10 @@ export class CategoriesRepo {
 		if (input.icon !== undefined) patch.icon = input.icon;
 		if (input.color !== undefined) patch.color = input.color;
 
+		const serverNow = Date.now();
+		patch.hlc = nowHLC(createHLCState('srv'), serverNow);
+		patch.serverUpdatedAt = serverNow;
+
 		const [updated] = await this.db
 			.update(categories)
 			.set(patch)
@@ -85,19 +94,19 @@ export class CategoriesRepo {
 	}
 
 	async archive(userId: string, id: string): Promise<boolean> {
-		const res = await this.db
-			.update(categories)
-			.set({ archived: true })
-			.where(and(eq(categories.userId, userId), eq(categories.id, id)))
-			.returning({ id: categories.id });
-
-		return res.length > 0;
+		return this.setArchived(userId, id, true);
 	}
 
 	async unarchive(userId: string, id: string): Promise<boolean> {
+		return this.setArchived(userId, id, false);
+	}
+
+	private async setArchived(userId: string, id: string, archived: boolean): Promise<boolean> {
+		const serverNow = Date.now();
+		const hlc = nowHLC(createHLCState('srv'), serverNow);
 		const res = await this.db
 			.update(categories)
-			.set({ archived: false })
+			.set({ archived, hlc, serverUpdatedAt: serverNow })
 			.where(and(eq(categories.userId, userId), eq(categories.id, id)))
 			.returning({ id: categories.id });
 

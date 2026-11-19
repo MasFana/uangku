@@ -5,13 +5,11 @@ export interface AppEvent {
 		db?: AppDatabase;
 		user?: { id: string } | null;
 		session?: unknown | null;
-		kv?: unknown;
 		r2?: unknown;
 	};
 	platform?: {
 		env?: {
 			APP_DB?: unknown;
-			CACHE?: unknown;
 			RECEIPTS?: unknown;
 		};
 	};

@@ -1,103 +1,112 @@
 import * as v from 'valibot';
 import { walletTypes, categoryKinds, transactionTypes } from './db/schema';
+import type { SyncEntityTable, SyncOperation } from '$lib/shared/sync-contract';
 
-// --- Wallets ---
+// --- Sync push mutations ---
+// Validated before any D1 write so a malformed mutation is reported as
+// `invalid` instead of throwing a constraint error or persisting junk.
 
-export const CreateWalletSchema = v.object({
-	name: v.pipe(v.string(), v.trim(), v.minLength(1, 'Nama dompet wajib diisi'), v.maxLength(50)),
+const syncIdSchema = v.pipe(v.string(), v.minLength(1, 'ID wajib diisi'));
+const syncIdOrNull = v.optional(v.nullable(syncIdSchema));
+// IDR adalah integer: tolak non-integer (termasuk NaN/Infinity) dan negatif.
+const syncAmountSchema = v.pipe(
+	v.number(),
+	v.integer('Jumlah harus bilangan bulat'),
+	v.minValue(0, 'Jumlah tidak boleh negatif')
+);
+const syncTimestamp = v.optional(v.nullable(v.pipe(v.string(), v.minLength(1))));
+
+export const SyncWalletUpsertSchema = v.object({
+	id: syncIdSchema,
+	name: v.pipe(v.string(), v.minLength(1, 'Nama dompet wajib diisi'), v.maxLength(50)),
 	type: v.picklist(walletTypes, 'Tipe dompet tidak valid'),
-	initialBalance: v.optional(v.pipe(v.number(), v.integer('Saldo awal harus bilangan bulat')), 0),
-	icon: v.optional(v.nullable(v.pipe(v.string(), v.maxLength(30))))
+	initialBalance: syncAmountSchema,
+	icon: v.optional(v.nullable(v.pipe(v.string(), v.maxLength(30)))),
+	archived: v.optional(v.boolean()),
+	deletedAt: syncTimestamp,
+	createdAt: v.optional(v.string())
 });
 
-export const UpdateWalletSchema = v.object({
-	name: v.optional(v.pipe(v.string(), v.trim(), v.minLength(1), v.maxLength(50))),
-	type: v.optional(v.picklist(walletTypes, 'Tipe dompet tidak valid')),
-	icon: v.optional(v.nullable(v.pipe(v.string(), v.maxLength(30))))
-});
-
-// --- Categories ---
-
-export const CreateCategorySchema = v.object({
-	name: v.pipe(v.string(), v.trim(), v.minLength(1, 'Nama kategori wajib diisi'), v.maxLength(50)),
+export const SyncCategoryUpsertSchema = v.object({
+	id: syncIdSchema,
+	name: v.pipe(v.string(), v.minLength(1, 'Nama kategori wajib diisi'), v.maxLength(50)),
 	kind: v.picklist(categoryKinds, 'Jenis kategori tidak valid'),
 	icon: v.optional(v.nullable(v.pipe(v.string(), v.maxLength(30)))),
-	color: v.optional(v.nullable(v.pipe(v.string(), v.maxLength(20))))
+	color: v.optional(v.nullable(v.pipe(v.string(), v.maxLength(20)))),
+	archived: v.optional(v.boolean()),
+	deletedAt: syncTimestamp,
+	createdAt: v.optional(v.string())
 });
 
-export const UpdateCategorySchema = v.object({
-	name: v.optional(v.pipe(v.string(), v.trim(), v.minLength(1), v.maxLength(50))),
-	kind: v.optional(v.picklist(categoryKinds, 'Jenis kategori tidak valid')),
-	icon: v.optional(v.nullable(v.pipe(v.string(), v.maxLength(30)))),
-	color: v.optional(v.nullable(v.pipe(v.string(), v.maxLength(20))))
-});
-
-// --- Transactions ---
-
-// Form HTML mengirim kolom opsional yang kosong sebagai '' — kolom FK harus NULL.
-// Tanpa ini D1 menolak insert dengan FOREIGN KEY constraint failed.
-const optionalId = v.optional(
-	v.nullable(v.pipe(v.string(), v.transform((value) => (value === '' ? null : value))))
-);
-
-export const CreateTransactionSchema = v.object({
-	walletId: v.pipe(v.string(), v.minLength(1, 'Dompet wajib dipilih')),
-	categoryId: optionalId,
+export const SyncTransactionUpsertSchema = v.object({
+	id: syncIdSchema,
+	walletId: syncIdSchema,
+	categoryId: syncIdOrNull,
 	type: v.picklist(transactionTypes, 'Tipe transaksi tidak valid'),
-	amount: v.pipe(
-		v.number(),
-		v.integer('Jumlah harus bilangan bulat'),
-		v.minValue(1, 'Jumlah harus lebih besar dari 0')
-	),
-	transferWalletId: optionalId,
+	amount: syncAmountSchema,
+	transferWalletId: syncIdOrNull,
 	note: v.optional(v.nullable(v.pipe(v.string(), v.maxLength(200)))),
-	occurredAt: v.optional(v.pipe(v.string(), v.isoTimestamp('Format tanggal tidak valid'))),
-	receiptKey: optionalId
+	occurredAt: v.pipe(v.string(), v.minLength(1, 'Tanggal wajib diisi')),
+	receiptKey: v.optional(v.nullable(v.string())),
+	deletedAt: syncTimestamp,
+	createdAt: v.optional(v.string()),
+	updatedAt: v.optional(v.string())
 });
 
-export const UpdateTransactionSchema = v.object({
-	walletId: v.optional(v.pipe(v.string(), v.minLength(1))),
-	categoryId: optionalId,
-	amount: v.optional(
-		v.pipe(
-			v.number(),
-			v.integer('Jumlah harus bilangan bulat'),
-			v.minValue(1, 'Jumlah harus lebih besar dari 0')
-		)
-	),
-	note: v.optional(v.nullable(v.pipe(v.string(), v.maxLength(200)))),
-	occurredAt: v.optional(v.pipe(v.string(), v.isoTimestamp('Format tanggal tidak valid'))),
-	receiptKey: optionalId
+export const SyncDeletePayloadSchema = v.object({
+	id: v.optional(v.string()),
+	deletedAt: syncTimestamp
 });
 
-export const TransferSchema = v.object({
-	sourceWalletId: v.pipe(v.string(), v.minLength(1, 'Dompet asal wajib dipilih')),
-	targetWalletId: v.pipe(v.string(), v.minLength(1, 'Dompet tujuan wajib dipilih')),
-	amount: v.pipe(
-		v.number(),
-		v.integer('Jumlah harus bilangan bulat'),
-		v.minValue(1, 'Jumlah transfer harus lebih besar dari 0')
-	),
-	note: v.optional(v.nullable(v.pipe(v.string(), v.maxLength(200)))),
-	occurredAt: v.optional(v.pipe(v.string(), v.isoTimestamp('Format tanggal tidak valid')))
+export const SyncMutationEnvelopeSchema = v.object({
+	entityId: syncIdSchema,
+	table: v.picklist(['wallets', 'categories', 'transactions'] as const),
+	op: v.picklist(['UPSERT', 'DELETE'] as const),
+	hlc: v.pipe(v.string(), v.minLength(1, 'HLC wajib diisi')),
+	payload: v.unknown()
 });
 
-export const ListTransactionsQuerySchema = v.object({
-	walletId: v.optional(v.string()),
-	categoryId: v.optional(v.string()),
-	type: v.optional(v.picklist(transactionTypes)),
-	startDate: v.optional(v.string()),
-	endDate: v.optional(v.string()),
-	from: v.optional(v.pipe(v.string(), v.regex(/^\d{4}-\d{2}-\d{2}$/, 'Format tanggal from harus YYYY-MM-DD'))),
-	to: v.optional(v.pipe(v.string(), v.regex(/^\d{4}-\d{2}-\d{2}$/, 'Format tanggal to harus YYYY-MM-DD'))),
-	cursor: v.optional(v.string()),
-	limit: v.optional(v.pipe(v.number(), v.minValue(1), v.maxValue(100)))
-});
+export interface ParsedSyncMutation {
+	entityId: string;
+	table: SyncEntityTable;
+	op: SyncOperation;
+	hlc: string;
+	payload: Record<string, unknown>;
+}
 
-// Helper for pure Valibot parse
-export function parseInput<T extends v.BaseSchema<unknown, unknown, v.BaseIssue<unknown>>>(
-	schema: T,
-	input: unknown
-): v.InferOutput<T> {
-	return v.parse(schema, input);
+/**
+ * Validates the mutation envelope plus its op-specific payload.
+ * Returns `null` when anything is malformed (caller reports `invalid`).
+ * `payload.id`, when present, must equal `entityId` so a mutation can never
+ * address a different row than the one its ownership was checked against.
+ */
+export function parseSyncMutation(input: unknown): ParsedSyncMutation | null {
+	const envelope = v.safeParse(SyncMutationEnvelopeSchema, input);
+	if (!envelope.success) return null;
+
+	const { entityId, table, op, hlc } = envelope.output;
+	const rawPayload = envelope.output.payload ?? {};
+
+	let payload: Record<string, unknown>;
+	if (op === 'DELETE') {
+		const result = v.safeParse(SyncDeletePayloadSchema, rawPayload);
+		if (!result.success) return null;
+		payload = result.output as Record<string, unknown>;
+	} else if (table === 'wallets') {
+		const result = v.safeParse(SyncWalletUpsertSchema, rawPayload);
+		if (!result.success) return null;
+		payload = result.output as Record<string, unknown>;
+	} else if (table === 'categories') {
+		const result = v.safeParse(SyncCategoryUpsertSchema, rawPayload);
+		if (!result.success) return null;
+		payload = result.output as Record<string, unknown>;
+	} else {
+		const result = v.safeParse(SyncTransactionUpsertSchema, rawPayload);
+		if (!result.success) return null;
+		payload = result.output as Record<string, unknown>;
+	}
+
+	if (typeof payload.id === 'string' && payload.id !== entityId) return null;
+
+	return { entityId, table, op, hlc, payload };
 }
