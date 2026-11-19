@@ -2,7 +2,7 @@
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and dates are ISO 8601. This repository has no tagged release yet, so everything below is the build up to the first one. Version numbers are a plan, not a promise.
 
-## 0.1.0 (unreleased, work from 2026-11-11 to 2026-11-13)
+## 0.1.0 (unreleased, work from 2026-11-11 to 2026-11-19)
 
 ### Added
 
@@ -13,7 +13,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 - The transaction list groups rows by day, pages with a composite cursor, and shows each day's net total from a server side aggregate.
 - Month navigation on the transaction list, with an all option and a custom date range. Invalid input falls back to the current month.
 - Analytics page with presets from this week (starting Monday) to all time, daily, weekly, and monthly buckets, breakdowns per category and per wallet, and a comparison against the previous period. Transfers count as neither income nor expense.
-- Dashboard with total balance, current month cash flow, category breakdown, a six month bar chart in hand written SVG, and recent transactions. The summary is cached in KV for 60 seconds and invalidated on writes.
+- Dashboard with total balance, current month cash flow, category breakdown, a six month bar chart in hand written SVG, and recent transactions. Every figure is derived on the client from the IndexedDB ledger; there is no server side summary cache.
+- Instant, offline capable data pages: `/`, `/transactions`, `/wallets`, `/categories`, and `/analytics` render from an on-device IndexedDB ledger and make no data request per navigation (about 8 ms on a 200 ms RTT mobile link, down from 219–241 ms). Writes apply to the local ledger immediately and queue in an outbox, then sync in the background with retries on reconnect, so a dropped connection never loses a write.
 - CSV export at `/api/export`, streamed from D1 in pages of 200 rows with a UTF-8 BOM, CRLF line endings, and RFC 4180 quoting.
 - Light and dark theme with a system option, plus a head script that prevents a theme flash on load.
 - Design system in `DESIGN.md`: neo brutalist tokens in OKLCH, the Instrument Sans and JetBrains Mono pair, hard shadows, and a 44 px minimum touch target.
@@ -36,15 +37,16 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ### Changed
 
-- Analytics moved out of the dashboard into `/analytics`, because filter controls on the same page as a user keyed cache mixed data from different filters.
+- Analytics moved out of the dashboard into `/analytics`, so the chart controls live in one place instead of two.
 - Page titles moved into the header from a single route map that also feeds both navigations.
 - The floating action button now means "record a transaction" everywhere. Wallet and category forms use labelled buttons in the page header instead.
 - The seeder inserts categories in chunks of 5 rows, because one statement with 17 rows and 8 columns exceeds the 100 bound parameter limit in D1.
 - SvelteKit remote functions stay off. The earlier `*.remote.ts` files were moved into `src/lib/server/services/`.
+- Data routes moved to client side rendering (`ssr = false`, no `load`); reads come from IndexedDB and `/api/sync` is the only mutation endpoint. The KV dashboard cache and the pre migration server aggregation services were removed.
 - The app package is named `uangku`, and `scripts/check.sh` finds the design detector on `PATH` instead of a fixed location.
 
 ### Known gaps
 
 - Receipt photos to R2 are not implemented. The `RECEIPTS` binding is absent from `wrangler.jsonc`, because R2 is turned off on the deployment account.
 - AI insight and receipt scanning are not implemented. `AI_BASE_URL`, `AI_API_KEY`, and `AI_MODEL` are reserved secret names with no reader in the code.
-- Budgets, tags with D1 FTS5 search, savings goals, recurring entries, multi currency, and offline support are planned in `docs/specs/roadmap.md`.
+- Budgets, tags with D1 FTS5 search, savings goals, recurring entries, and multi currency are planned in `docs/specs/roadmap.md`.

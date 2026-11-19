@@ -65,7 +65,7 @@ npm test                    # vitest run
 npx vitest run tests/balance.test.ts
 ```
 
-Suites run inside workerd through `@cloudflare/vitest-pool-workers`, using the D1 and KV bindings from `wrangler.jsonc`. Concurrency is off (`fileParallelism: false`) and the timeout is 90 seconds per test, so a small machine can still finish the run.
+Suites run under plain Vitest (`pool: 'forks'`); those that need a database open a real one through `getPlatformProxy` from `wrangler`. Concurrency is off (`fileParallelism: false`) and the timeout is 90 seconds per test, so a small machine can still finish the run.
 
 Balance math, period resolution, tenant isolation, CSV escaping, and the route guard are covered. If you change a calculation, extend the suite that owns it; a bug fix without a regression test was not fixed.
 

@@ -1,6 +1,6 @@
 # Architecture
 
-One SvelteKit app deployed to Cloudflare Workers. Static assets are served by the assets binding, every `/api/*` request goes to the worker first, and all data lives in D1 with a KV cache in front of the dashboard summary.
+One SvelteKit app deployed to Cloudflare Workers. Static assets are served by the assets binding, every `/api/*` request goes to the worker first, and all data lives in D1. The data routes render on the client from an on-device IndexedDB ledger, so a page navigation makes no data request, and `/api/sync` is the only mutation endpoint.
 
 ```
 browser
@@ -9,19 +9,23 @@ browser
   │                          ├─ read bindings, build D1 client
   │                          ├─ Better-Auth getSession(headers)
   │                          ├─ guard: no session and not a public route? 303 /login?redirectTo=...
-  │                          └─ route load ──► services ──► repos ──► Drizzle ──► D1
-  │                                                                  └─► KV (dashboard summary, 60 s)
-  └── POST /?/create   ──► form action ──► Valibot ──► services ──► repos ──► D1, then clear the KV key
+  │                          └─ deliver the app shell ──► client renders from IndexedDB (no data request)
+  │
+  ├── client read      ──► IndexedDB ledger ──► src/lib/client/derive/** (balances, totals, analytics)
+  └── client write     ──► IndexedDB (optimistic) + outbox ──► POST /api/sync ──► Valibot ──► repos ──► D1
 ```
 
 ## Layers
 
 | Layer | Location | Rule |
 |---|---|---|
-| Routes | `src/routes/**/+page.server.ts`, `+server.ts` | Read query params and form data, call a service, return data. Never build SQL here. |
-| Services | `src/lib/server/services/*` | Use case per file: transactions, wallets, categories, stats, export. Owns validation and cache invalidation. |
+| Client pages | `src/routes/**/+page.svelte`, `+page.ts` | Render from an IndexedDB ledger through reactive Svelte 5 state. Every data route sets `export const ssr = false` and has no `load`, so no `/__data.json` request is made per navigation. |
+| Client derivation | `src/lib/client/derive/*` | Balances, totals, and analytics computed from the local transaction log. Guarded against drift by `tests/be/derive-parity.test.ts`, which compares them against real D1 SQL. |
+| Client storage and sync | `src/lib/client/db/*`, `src/lib/client/sync/*` | The IndexedDB ledger and its outbox, plus the single flight engine that pushes writes to `/api/sync`. |
+| Server routes | `src/routes/**/+server.ts` (only under `/api/*`) | Auth, sync, export, and receipt upload. Read query params and the request body, call a service, return data. Never build SQL here. |
+| Services | `src/lib/server/services/*` | Use case per file: categories, export. |
 | Repositories | `src/lib/server/repos/*` | Drizzle queries, always scoped by `user_id`. |
-| Pure logic | `src/lib/server/balance.ts`, `stats.ts`, `period.ts`, `csv.ts`, `guard.ts` | No bindings, no `event`, so tests can call them directly. |
+| Pure logic | `src/lib/server/stats.ts`, `period.ts`, `csv.ts`, `guard.ts` | No bindings, no `event`, so tests can call them directly. |
 | Data | `src/lib/server/db/schema.ts` | Drizzle schema, the source of truth for migrations. |
 
 SvelteKit remote functions are deliberately off (`experimental.remoteFunctions` stays false). The earlier `*.remote.ts` files were moved into `services/` because the file name suggested a feature that was not in use.
@@ -39,7 +43,7 @@ event.locals.env = env;
 
 `workerEnv` is `import { env } from 'cloudflare:workers'`, which `@sveltejs/adapter-cloudflare` 8 provides in dev and production. `event.platform.env` is kept as the first choice because the dev server fills it through `platformProxy`, but on this adapter it is `undefined` in production (see `docs/DECISIONS.md`, "Akses binding di produksi"). Route handlers that need a binding read `event.locals.env`.
 
-Bindings: `APP_DB` (D1) and `CACHE` (KV). A `RECEIPTS` (R2) binding was removed from `wrangler.jsonc` while R2 is disabled on the original account; it comes back with the receipt upload feature.
+Bindings: `APP_DB` (D1). The `CACHE` (KV) binding is still declared in `wrangler.jsonc` but nothing reads it since the dashboard cache was removed. A `RECEIPTS` (R2) binding was removed while R2 is disabled on the original account; it comes back with the receipt upload feature.
 
 ## Data model
 
@@ -52,7 +56,7 @@ D1 is SQLite, so ids are text and columns are conservative.
 | `categories` | `id`, `user_id`, `name`, `kind`, `icon`, `color`, `archived` | Unique on `(user_id, name, kind)`. `kind` is `expense` or `income`. |
 | `transactions` | `id`, `user_id`, `wallet_id`, `category_id`, `type`, `amount`, `transfer_wallet_id`, `note`, `occurred_at`, `receipt_key` | Indexed on `(user_id, occurred_at desc)` and `(wallet_id, occurred_at)`. Foreign keys are `restrict` on delete. |
 
-Drizzle generates the SQL files in `drizzle/`. `0001_backfill_default_categories.sql` inserts the 17 default categories for accounts created before the seeding hook existed, and it is written so that running it twice changes nothing.
+Drizzle generates the SQL files in `drizzle/`. `0001_backfill_default_categories.sql` inserts the 17 default categories for accounts created before the seeding hook existed, and it is written so that running it twice changes nothing. `0002_hlc_sync_rollups_triggers.sql` and `0003_category_watermark_scoped_triggers.sql` are hand written SQL for the sync triggers, and the journal and snapshot chain was repaired so `drizzle-kit generate` reports "No schema changes".
 
 ## Money
 
@@ -68,7 +72,7 @@ balance(wallet) = initial_balance
                 + sum(transfer where transfer_wallet_id = wallet)
 ```
 
-`calculateWalletBalance` and `calculateMultipleWalletBalances` in `src/lib/server/balance.ts` implement this as pure functions. `calculateMultipleWalletBalances` scans the mutation list once instead of looping per wallet.
+`deriveWalletBalances` in `src/lib/client/derive/balances.ts` implements this on the client, matching the D1 triggers in `drizzle/0002_hlc_sync_rollups_triggers.sql`. It scans the mutation list once instead of looping per wallet.
 
 Transfers are one row with `type = 'transfer'`, `wallet_id` as the source and `transfer_wallet_id` as the destination. They are excluded from `income`, `expense`, and `net` in analytics and in the dashboard cash flow, and they are counted in `count`.
 
@@ -77,17 +81,17 @@ Transfers are one row with `type = 'transfer'`, `wallet_id` as the source and `t
 - `occurred_at` is an ISO UTC string. A date picked in the UI (for example `2026-11-12`) becomes `2026-11-12T00:00:00.000Z`, and range filters compare against `T00:00:00.000Z` to `T23:59:59.999Z` so both ends are inclusive.
 - Month buckets, week buckets, and grouping all use UTC, and weeks start on Monday.
 - `/transactions` takes `period=YYYY-MM`, `all`, or `custom` with `startDate` and `endDate`. An invalid value falls back to the current month instead of failing. `periodNav.next` is `null` for the current or a future month, so the UI cannot open an empty month.
-- `/analytics` uses different names on purpose: `range=week|month|year|all|custom` with `from`, `to`, `granularity`, `walletId`, `categoryId`, `type`. Every filter travels in the URL, so a view can be bookmarked and the server does one load per URL.
+- `/analytics` uses different names on purpose: `range=week|month|year|all|custom` with `from`, `to`, `granularity`, `walletId`, `categoryId`, `type`. Every filter travels in the URL, so a view can be bookmarked; the client resolves the same filter from the URL on each render.
 
 Bucket series are filled with zeroes for periods without transactions. A chart with missing points would suggest money moved when nothing happened.
 
-## Aggregates and pagination
+## Aggregates
 
-The transaction list pages by a composite cursor `(occurred_at, id)` and loads 20 rows at a time. One day can therefore span two pages, and summing the loaded rows would show a wrong day total. The server instead runs one `GROUP BY` day query for the days on the page and returns `dayTotals`, and the UI shows "memuat X dari Y" when it holds fewer rows than the day's `count`.
+The transaction list reads the local transaction log from IndexedDB and filters and groups it on the client (`src/lib/client/derive/filters.ts`), so a day never spans a page boundary and its net total comes from the same rows the list shows. Analytics is derived the same way (`src/lib/client/derive/aggregates.ts`), and both are checked against real D1 SQL by `tests/be/derive-parity.test.ts`.
 
-## Cache
+## Sync
 
-The dashboard summary is cached in KV under `dashboard:<userId>` for 60 seconds. `setDashboard` swallows KV errors on purpose: a cache failure must not fail a read or a write. Every mutation that changes balances or totals calls `invalidateDashboard`, which deletes the key. Analytics is not cached, because each filter combination would need its own key.
+Writes are optimistic. Every user mutation is applied to IndexedDB immediately and queued in an outbox; `src/lib/client/sync/engine.svelte.ts` pushes it in the background. The engine is single flight, bounds each cycle at 15 s, and backs off with jittered exponential delay. It triggers on `online`, `visibilitychange`, and `focus`, on a 30 s interval while the tab is visible, and on a service worker message. `/api/sync` is the only mutation endpoint: it validates payloads with Valibot, verifies ownership of referenced rows, rejects stale writes under HLC last-write-wins and reports the rejection, and advances the client cursor to `max(serverNow, max(delta watermark), clientCursor)`. The service worker precaches an app shell so a hard reload works offline; it never caches `private` or `no-store` responses such as `__data.json`.
 
 ## Auth and the route guard
 
@@ -101,11 +105,11 @@ One production detail worth keeping: `isPublicRequest` treats image requests as 
 
 ## D1 limits that shaped the code
 
-A D1 statement accepts at most 100 bound parameters. Inserting 17 categories as one statement would need 17 x 8 = 136 parameters, so the seeder inserts in chunks of 5. This limit applies in Miniflare as well as in production, so a test catches a chunk size change that would break the insert.
+A D1 statement accepts at most 100 bound parameters. Inserting 17 categories as one statement would need 17 x 8 = 136 parameters, so the seeder inserts in chunks of 5. This limit applies in the local test database as well as in production, so a test catches a chunk size change that would break the insert.
 
 ## Tests
 
-`vitest.config.ts` uses `@cloudflare/vitest-pool-workers`, so every suite runs inside workerd with real D1 and KV bindings from `wrangler.jsonc`. Suites live in `uangku-app/tests/`. Files run one at a time (`fileParallelism: false`) and each test has a 90 second timeout, because the host used for development is small and the worker pool needs the memory.
+`vitest.config.ts` runs plain Vitest (`pool: 'forks'`); suites that need a database open a real one through `getPlatformProxy` from `wrangler`. Suites live in `uangku-app/tests/`. Files run one at a time (`fileParallelism: false`) and each test has a 90 second timeout, because the host used for development is small. `npx vitest run` reports 20 files and 185 tests.
 
 ## Build and deploy
 

@@ -13,7 +13,7 @@ Format: checklist atomik, urut sesuai dependensi. Agent: kerjakan satu baris = s
 - [x] S5. `hooks.server.ts`: Better-Auth + `locals.user`, `locals.db`, `locals.r2`, `locals.kv`
 - [x] D1. Drizzle schema: wallets, categories, transactions + tabel Better-Auth
 - [x] D2. Kalkulasi saldo murni (`balance.ts`) + uji
-- [x] D3. KV cache helper dashboard (`src/lib/server/cache.ts`, TTL 60 s) + invalidasi saat mutasi
+- [x] D3. KV cache helper dashboard (`src/lib/server/cache.ts`, TTL 60 s) + invalidasi saat mutasi — **dihapus** pada migrasi client-first (lihat `CHANGELOG.md`)
 - [x] A1. Halaman login & register (email + password saja)
 - [x] A2. Guard rute (`guard.ts` + `hooks.server.ts`): publik hanya `/login`, `/register`, static, dan `/api/auth/`; sisanya butuh sesi
 - [x] X1. Auth `emailAndPassword` (tanpa OAuth/magic link)
@@ -32,13 +32,13 @@ Format: checklist atomik, urut sesuai dependensi. Agent: kerjakan satu baris = s
 - [x] Y2. Guard rute A2 + `redirectTo` aman di `/login` (tolak URL non-lokal)
 - [x] Y3. Halaman dompet: list + saldo, create, edit, archive (`/wallets`)
 - [x] Y4. Halaman kategori: list, create, edit, archive (`/categories`)
-- [x] Y5. Input transaksi: sheet modal + `NumericInput` (input numerik biasa, format `Rp` langsung — keputusan pemilik, **bukan** keypad buatan), validasi Valibot, invalidasi KV
+- [x] Y5. Input transaksi: sheet modal + `NumericInput` (input numerik biasa, format `Rp` langsung — keputusan pemilik, **bukan** keypad buatan), validasi Valibot, tersimpan ke ledger lokal lewat outbox (kini tanpa invalidasi KV)
 - [x] Y6. Daftar transaksi: filter (dompet, kategori, tipe, rentang tanggal) + pagination kursor gabungan `(occurredAt, id)` dengan tombol "Muat Lebih Banyak"
 - [x] Y7. Edit/hapus transaksi (kepemilikan diperiksa di repo/layanan)
 - [x] Y8. Transfer antar dompet
-- [x] Y9. Dashboard nyata dari KV: total saldo, arus kas bulan, breakdown kategori, grafik 6 bulan (SVG buatan sendiri), transaksi terakhir
+- [x] Y9. Dashboard nyata (kini diturunkan di klien dari ledger IndexedDB): total saldo, arus kas bulan, breakdown kategori, grafik 6 bulan (SVG buatan sendiri), transaksi terakhir
 - [x] Y10a. Empty state di `/`, `/wallets`, `/categories`, `/transactions` (`EmptyState.svelte`)
-- [x] Y10b. Skeleton loading — dihapus (YAGNI/dead code); SSR SvelteKit menyajikan data lengkap tanpa streaming deferred
+- [x] Y10b. Skeleton loading — dihapus (YAGNI/dead code); halaman data kini client-rendered (`ssr = false`, tanpa `load`)
 
 ## Fase 1 lanjutan
 - [ ] F6. Upload struk ke R2 (validasi 5 MB, `image/*`) + endpoint lihat struk — **terblokir**: binding R2 belum aktif di akun (error 10042), binding `RECEIPTS` sudah dihapus dari `wrangler.jsonc`
@@ -56,7 +56,7 @@ Rencana (disetujui pemilik 2026-11-12): halaman analisis dengan filter + toggle 
 - [x] A5. Uji: preset rentang, batas inklusif, bucket + celah, agregasi, transfer dikecualikan, filter, scope user, `previous`. Pemilik: qa-review.
 - [x] A6. Gerbang `scripts/check.sh` di HEAD + verifikasi produksi via curl (sesi nyata) + deploy. Pemilik: orchestrator.
 
-Catatan lingkup: tab harian/mingguan/bulanan TIDAK dipasang di beranda; beranda tetap grafik 6 bulan + tautan ke `/analytics`, supaya kontrol chart hanya ada di satu tempat dan cache KV dashboard (kunci: user) tidak perlu berubah.
+Catatan lingkup: tab harian/mingguan/bulanan TIDAK dipasang di beranda; beranda tetap grafik 6 bulan + tautan ke `/analytics`, supaya kontrol chart hanya ada di satu tempat.
 
 ## Sprint 3 tambahan (permintaan pemilik) — SELESAI
 - [x] A7. Perbaikan FAB `+`: tombol di nav bawah dan tombol "+ Transaksi" di header saat ini hanya `<a href="/transactions">` padahal labelnya "Tambah Transaksi Baru". Diarahkan ke `/transactions?new=1`; halaman transaksi membuka modal dari parameter `new` (`$effect` pada `page.url`, karena navigasi klien tidak me-remount halaman) dan membersihkan parameter saat menutup. Pemilik: ui-design.

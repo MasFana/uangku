@@ -2,6 +2,8 @@
 
 Dokumen ini memetakan seluruh kriteria penerimaan berdasarkan `docs/specs/fase1-prd.md` §7, `AGENTS.md`, `DESIGN.md`, dan `docs/DECISIONS.md`. Setiap butir diverifikasi dengan bukti berkas dan baris kode atau nama berkas tes unit/integrasi.
 
+> Catatan: dokumen ini snapshot Sprint 2. Rujukan berkas uji lama (`tests/balance.test.ts`, `tests/cache.test.ts`, `tests/stats.test.ts`, `tests/day-totals.test.ts`, `tests/transactions-query.test.ts`) sudah digantikan oleh suite saat ini; lihat `CONTRIBUTING.md` untuk daftar terbaru.
+
 ---
 
 ## 1. Kriteria Penerimaan Fungsional (PRD §7 & Sprint 2)
@@ -9,9 +11,9 @@ Dokumen ini memetakan seluruh kriteria penerimaan berdasarkan `docs/specs/fase1-
 | ID | Skenario (Given-When-Then) | Status | Bukti Verifikasi / Alasan Belum Diuji |
 |---|---|---|---|
 | **AC-01** | **Given** 3 dompet **WHEN** dashboard dibuka **THEN** total saldo = akumulasi saldo awal + seluruh mutasi terhitung akurat. | **LULUS** | `tests/balance.test.ts:109-170` (`calculateMultipleWalletBalances`), `tests/balance.test.ts:40-108` (`calculateWalletBalance`). |
-| **AC-02** | **Given** transaksi baru **WHEN** dibuat **THEN** cache KV dashboard di-invalidate dan saldo dihitung ulang. | **LULUS** | `tests/cache.test.ts:25-96` (`stores and retrieves dashboard summary`, `invalidates cache on mutation`), `src/lib/server/cache.ts:28-66`. |
+| **AC-02** | **Given** transaksi baru **WHEN** dibuat **THEN** saldo dan ringkasan dashboard dihitung ulang dari ledger lokal. | **LULUS** | `tests/be/derive-parity.test.ts` (turunan klien cocok dengan agregat SQL D1), `src/lib/client/derive/index.ts` (`deriveDashboard`). |
 | **AC-03** | **Given** transfer Rp50.000 A→B **WHEN** dieksekusi **THEN** saldo A -50.000, saldo B +50.000, tercatat 1 baris `type='transfer'` dengan `transfer_wallet_id`. | **LULUS** | `tests/balance.test.ts:86-107`, `src/lib/server/repos/transactions.ts:167-210`, `tests/isolation.test.ts:225-245`. |
-| **AC-04** | **Given** export transaksi **WHEN** diunduh **THEN** file CSV valid dengan escaping karakter khusus. | **BELUM DIUJI** | Belum diimplementasikan di kode sumber (`src/routes/**` belum memiliki endpoint streaming export CSV). |
+| **AC-04** | **Given** export transaksi **WHEN** diunduh **THEN** file CSV valid dengan escaping karakter khusus. | **LULUS** | `tests/csv-export.test.ts`, `src/routes/api/export/+server.ts`. |
 | **AC-05** | **Given** mutasi saldo bervariasi **WHEN** diuji **THEN** seluruh kalkulasi matematika saldo dan arus kas integer IDR akurat. | **LULUS** | `tests/balance.test.ts:11-205` (11 test case lulus, pembulatan integer rupiah tanpa toleransi float). |
 | **AC-06** | **Given** transaksi difilter (rentang tanggal, dompet, kategori, tipe) **WHEN** query dieksekusi **THEN** data terfilter presisi dan kasus batas ditangani aman. | **LULUS** | `tests/transactions-query.test.ts:89-183` (4 pengujian filtering: dompet, kategori, tipe, rentang tanggal `from > to`). |
 | **AC-07** | **Given** pagination transaksi dengan `occurredAt` kembar **WHEN** paginasi bertahap **THEN** urutan `occurred_at DESC, id DESC` stabil, `hasMore`/`nextCursor` valid, tidak ada baris ganda atau terlewat. | **LULUS** | `tests/transactions-query.test.ts:184-297` (membuat 3 baris bertimestamp persis sama `2026-07-01T12:00:00.000Z`, dipaginasi limit 2 dengan cursor komposit tanpa item lompat/duplikat). |
@@ -58,4 +60,4 @@ Dokumen ini memetakan seluruh kriteria penerimaan berdasarkan `docs/specs/fase1-
 | **Aksesibilitas Kontras & Sentuhan** | **LULUS** | Kontras warna OKLCH dan target sentuh ≥ 44px diperbaiki di commit `3f4facd`. |
 | **Grafik Tren 6 Bulan Text Alternative** | **LULUS** | Atribut `role="img"` dan `aria-label` naratif ditambahkan ke `CashflowChart.svelte` di commit `3f4facd`. |
 | **Peredaman Animasi (Reduced Motion)** | **LULUS** | Konfigurasi `@theme` dan aturan CSS neo-brutalist diatur di `src/app.css` & `DESIGN.md`. |
-| **Keterbatasan Test Harness Cloudflare** | **TERCATAT** | Modul virtual `cloudflare:test` / `SELF` tidak aktif pada setup vitest saat ini (tanpa cloudflare pool worker). `wrangler dev` crash di host Alpine musl (`kj/async.c++:1429 unimplemented: getcontext`). Seluruh verifikasi DB & KV D1 dijalankan stabil lewat Miniflare instance di Vitest. |
+| **Keterbatasan Test Harness Cloudflare** | **TERCATAT** | Modul virtual `cloudflare:test` / `SELF` tidak dipakai pada setup vitest saat ini (tanpa cloudflare pool worker). `wrangler dev` crash di host Alpine musl (`kj/async.c++:1429 unimplemented: getcontext`). Verifikasi D1 dijalankan lewat `getPlatformProxy` dari `wrangler` di suite Vitest. |

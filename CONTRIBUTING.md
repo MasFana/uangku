@@ -4,7 +4,7 @@ Thanks for looking. This is a small app with a narrow scope, so the fastest path
 
 ## Scope
 
-In scope: Indonesian rupiah, personal use, single user accounts, offline first is not a goal, mobile screens come first.
+In scope: Indonesian rupiah, personal use, single user accounts, offline capable (an on-device IndexedDB ledger with background sync), mobile screens come first.
 
 Out of scope for now: multi currency, recurring transactions, family sharing, email notifications, and any feature that needs a paid service other than Cloudflare.
 
@@ -47,14 +47,16 @@ Add a test when you change a calculation, a query, or a guard. Existing suites:
 
 | File | Covers |
 |---|---|
-| `tests/balance.test.ts` | Balance arithmetic, transfers, empty and archived wallets |
-| `tests/period.test.ts` | Month and range resolution, boundaries, invalid input |
-| `tests/stats.test.ts`, `tests/trend.test.ts`, `tests/day-totals.test.ts` | Buckets, ranges, daily aggregates |
-| `tests/transactions-query.test.ts`, `tests/isolation.test.ts` | Filters, cursor paging, per user isolation |
+| `tests/fe/derive-balance.test.ts` | Balance arithmetic, transfers, empty and archived wallets |
+| `tests/be/derive-parity.test.ts` | Client derivation against real D1 SQL |
+| `tests/period.test.ts`, `tests/trend.test.ts` | Buckets, ranges, boundaries, daily aggregates |
+| `tests/isolation.test.ts` | Per user isolation |
 | `tests/csv-export.test.ts` | BOM, CRLF, quoting, transfer rows |
-| `tests/categories-*.test.ts` | Default category list, chunked insert, idempotent seeding |
+| `tests/categories-*.test.ts`, `tests/be/categories-watermark.test.ts` | Default category list, chunked insert, idempotent seeding |
 | `tests/guard.test.ts` | Public routes, browser `Accept` headers, redirect target |
-| `tests/cache.test.ts`, `tests/valibot-schemas.test.ts` | Dashboard key and TTL, input schemas |
+| `tests/valibot-schemas.test.ts`, `tests/sync/valibot-sync-schemas.test.ts` | Input and sync payload schemas |
+| `tests/sync/*.test.ts` | Sync engine resilience, multi device merge, the `/api/sync` endpoint |
+| `tests/fe/*.test.ts` | Local ledger writes, outbox squashing, service worker cache policy, sync diagnostics |
 
 ## Pull request checklist
 

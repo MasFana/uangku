@@ -22,7 +22,7 @@ Aplikasi keuangan umum: iklan, data di server orang lain, fitur berbayar. Uangku
 - AI: endpoint OpenAI-kompatibel milik sendiri (konfigurasi via secret).
 
 ## Non-goals (Fase 1–2)
-Bank sync/e-wallet otomatis, multi-currency, PDF, PWA offline, sharing keluarga, web publik. Lihat Fase 3 di specs/roadmap.
+Bank sync/e-wallet otomatis, multi-currency, PDF, sharing keluarga, web publik. Lihat Fase 3 di specs/roadmap.
 
 ## Metrik sukses
 - Waktu input transaksi < 10 detik.

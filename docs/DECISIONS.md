@@ -26,14 +26,14 @@ Larangan visual (dari skill antislop, tetap berlaku): gradien ungu-biru, kartu b
 ## Kode
 | Aspek | Keputusan |
 |---|---|
-| Pola arsitektur | **Berlapis**: `+page.server.ts` (`load` + form actions) → layanan `src/lib/server/services/*` → repository `src/lib/server/repos/*` → Drizzle → D1. Route tidak boleh memanggil Drizzle langsung |
+| Pola arsitektur | **Client-first untuk data**: halaman merender dari ledger IndexedDB (`src/lib/client/**`, `ssr = false`, tanpa `load`); mutasi hanya lewat `/api/sync` → layanan `src/lib/server/services/*` → repository `src/lib/server/repos/*` → Drizzle → D1. Endpoint `/api/*` tidak boleh memanggil Drizzle langsung |
 | Remote functions SvelteKit | **TIDAK dipakai.** Flag `experimental.remoteFunctions` tetap mati. Berkas `*.remote.ts` lama sudah dipindah ke `src/lib/server/services/*.ts` karena namanya menyesatkan |
-| Validasi | Valibot di semua batas input (form action, load, query param) |
+| Validasi | Valibot di semua batas input (`/api/sync`, route auth, query param) |
 | Uang | Integer rupiah, tanpa float; tampil `Rp12.500` |
 | Auth | Better-Auth + adapter Drizzle D1, sesi di D1 |
 | Binding | `event.platform.env`; tidak pernah di module scope |
 | Bahasa | Teks UI + commit message Indonesia; identifier & komentar kode Inggris |
-| Test | Vitest `@cloudflare/vitest-pool-workers`; logika saldo wajib fungsi murni |
+| Test | Vitest (`pool: forks`); suite D1 memakai `getPlatformProxy` dari `wrangler`; logika saldo wajib fungsi murni |
 | Deploy | Lokal saja sampai kredensial Cloudflare tersedia; `--remote`/`deploy` hanya dengan izin orchestrator |
 
 ## Konsekuensi yang sudah diterima
@@ -114,8 +114,8 @@ Larangan visual (dari skill antislop, tetap berlaku): gradien ungu-biru, kartu b
 - Uji unit: `tests/csv-export.test.ts` (6 uji; decoder uji memakai `ignoreBOM: true`, karena `TextDecoder` bawaan membuang BOM).
 
 ## Analitik dipisah ke `/analytics`
-- Beranda menyimpan grafik 6 bulan dengan cache KV berkunci `userId`; menambahkan tab granularitas dan filter di beranda akan menyajikan angka dari kunci cache yang salah dan menampilkan kontrol grafik dua kali. Karena itu kontrol analitik hanya ada di `/analytics`, dan beranda menautkan ke sana.
-- Semua filter lewat URL (`?range=month&granularity=day&walletId=...`): bisa di-bookmark, dan `load` server hanya sekali per URL, tanpa state klien yang bisa berbeda dari data.
+- Beranda hanya menyimpan grafik 6 bulan; menambahkan tab granularitas dan filter di beranda akan menampilkan kontrol grafik dua kali. Karena itu kontrol analitik hanya ada di `/analytics`, dan beranda menautkan ke sana.
+- Semua filter lewat URL (`?range=month&granularity=day&walletId=...`): bisa di-bookmark, dan grafik dihitung dari ledger lokal yang sama dengan daftar, tanpa state klien yang bisa berbeda dari data.
 - Transfer dikecualikan dari `income`/`expense`/`net` (konsisten dengan `calculateCashflow`), tetapi tetap dihitung di `count` — memindahkan uang antar dompet bukan pemasukan atau pengeluaran.
 - Bucket dihitung UTC, minggu mulai Senin, dan rangkaian bucket selalu kontinu (hari tanpa transaksi tetap muncul bernilai 0) supaya grafik tidak menipu dengan celah waktu.
 - Grafik memakai ulang `CashflowChart.svelte` tanpa perubahan; tidak ada pustaka chart.

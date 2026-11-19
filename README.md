@@ -1,6 +1,6 @@
 # Uangku
 
-A personal finance tracker for Indonesian rupiah, built as one SvelteKit app on Cloudflare Workers with D1, KV, and a session per user.
+A personal finance tracker for Indonesian rupiah, built as one SvelteKit app on Cloudflare Workers with D1 and a session per user.
 
 ![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)
 ![SvelteKit 3](https://img.shields.io/badge/SvelteKit-3-FF3E00.svg)
@@ -19,9 +19,10 @@ The screenshots above come from the test deployment with sample data in it.
 - Records expenses, income, and transfers between wallets. Amounts are integer rupiah, never floats.
 - Wallet balances are computed from transactions plus each wallet's starting balance. No balance column exists, so a balance cannot drift away from its transactions.
 - 17 default categories (12 expense, 5 income) are inserted when an account is created. Older accounts are covered by a backfill migration.
-- The transaction list is organized by month with arrow navigation, plus an "all" option and a custom date range. Rows are grouped per day, and each day shows its net total from a server side aggregate, so the number stays correct when one day spans two pages.
+- The transaction list is organized by month with arrow navigation, plus an "all" option and a custom date range. Rows are grouped per day, and each day shows its net total, derived on the client from the same local ledger the list reads.
 - Analytics page: presets (this week starting Monday, this month, this year, all, custom), daily, weekly, or monthly buckets, totals per category and per wallet, and a comparison against the previous period. Transfers count as neither income nor expense, because moving money between your own wallets is not a gain.
-- Dashboard: total balance, current month cash flow, category breakdown, a six month bar chart drawn as plain SVG, and the latest transactions. The summary is cached in KV for 60 seconds and the key is deleted on every write.
+- Dashboard: total balance, current month cash flow, category breakdown, a six month bar chart drawn as plain SVG, and the latest transactions. Every figure is derived on the client from the IndexedDB ledger, so there is no server side summary cache to invalidate.
+- Instant and offline capable: `/`, `/transactions`, `/wallets`, `/categories`, and `/analytics` render from an on-device IndexedDB ledger and make no data request per navigation. Writes are optimistic: each mutation applies locally, queues in an outbox, and syncs in the background; a service worker precaches the app shell so a hard reload works offline.
 - CSV export streams straight out of D1 with a UTF-8 BOM, CRLF line endings, and RFC 4180 escaping, so Excel opens it without broken characters.
 - Email and password accounts through Better-Auth, with sessions in D1. Every page except `/login` and `/register` requires a session.
 - Light and dark theme with a three state toggle (system, light, dark), applied by a small script in the document head so the page does not flash.
@@ -31,14 +32,13 @@ The screenshots above come from the test deployment with sample data in it.
 
 | Layer | Choice | Reason |
 |---|---|---|
-| App | SvelteKit 3, Svelte 5 runes | Server side load functions and form actions; no client data layer to keep in sync |
+| App | SvelteKit 3, Svelte 5 runes | Client rendered from an IndexedDB ledger (no `load`); the only server mutations are at `/api/sync` |
 | Runtime | Cloudflare Workers | Runs next to the database; the build ships static assets plus one worker |
 | Database | D1 with Drizzle ORM | SQLite at the edge, typed queries, migrations as SQL files in the repo |
-| Cache | Workers KV | 60 second dashboard summary, cleared on mutation |
 | Auth | Better-Auth | Email and password sessions stored in D1 through the Drizzle adapter |
 | Validation | Valibot | Smaller than Zod in a worker bundle |
 | UI | Tailwind CSS 4, shadcn-svelte (Bits UI) | Design tokens in `@theme`, components restyled to `DESIGN.md` |
-| Tests | Vitest with `@cloudflare/vitest-pool-workers` | Tests run inside workerd against real D1 and KV bindings |
+| Tests | Vitest | D1 backed suites open a real database through `getPlatformProxy` from `wrangler` |
 
 ## Quickstart
 
@@ -69,8 +69,9 @@ uangku/
 ├── .github/workflows/                          ci.yml (typecheck, build, tests), deploy.yml
 ├── scripts/check.sh                            local gate: typecheck, build, tests
 └── uangku-app/                                 the SvelteKit app
-    ├── src/lib/server/                         db, repos, services, and pure logic (balance, stats, period)
-    ├── src/routes/                             pages, load functions, form actions
+    ├── src/lib/client/                         IndexedDB ledger, client derivations, sync engine
+    ├── src/lib/server/                         db, repos, and services for `/api/*`
+    ├── src/routes/                             client rendered pages; server routes only under `/api/*`
     ├── drizzle/                                generated SQL migrations
     └── tests/                                  Vitest suites
 ```
@@ -94,7 +95,7 @@ Run these inside `uangku-app/`.
 
 ## Tests
 
-`npm test` runs 120 tests across 13 files against real D1 and KV bindings inside workerd. The suites cover balance arithmetic including transfers, per user isolation, period resolution (month boundaries, February, year changes), daily aggregates, CSV escaping, default category seeding, the route guard, the dashboard cache, and analytics ranges.
+`npm test` runs 185 tests across 20 files. Suites that need a database open a real one through `getPlatformProxy` from `wrangler`. They cover balance arithmetic including transfers, per user isolation, period resolution (month boundaries, February, year changes), CSV escaping, default category seeding, the route guard, sync merging and the `/api/sync` endpoint, Valibot schemas, and client/server derivation parity (`tests/be/derive-parity.test.ts` compares the client derivation against real D1 SQL).
 
 ## Deploy
 
@@ -117,7 +118,7 @@ Stated plainly, because a README that promises features the code does not have i
 
 - Receipt photos to R2. The `RECEIPTS` binding was removed from `wrangler.jsonc`, because R2 is turned off on this deployment account.
 - AI monthly insight and receipt scanning. The secrets `AI_BASE_URL`, `AI_API_KEY`, and `AI_MODEL` are reserved in `.dev.vars.example`, and no code reads them yet.
-- Budgets, tags with D1 FTS5 search, savings goals, recurring entries, multi currency, and offline PWA support.
+- Budgets, tags with D1 FTS5 search, savings goals, recurring entries, and multi currency.
 
 Plans for those, with data models, are in `docs/specs/roadmap.md`.
 
@@ -129,7 +130,7 @@ The app was built by a small team of AI agent roles with a written contract: `AG
 
 | Document | Language | Content |
 |---|---|---|
-| `docs/architecture.md` | English | Layers, data model, request flow, bindings, caching, money rules |
+| `docs/architecture.md` | English | Layers, data model, request flow, bindings, sync, money rules |
 | `docs/development.md` | English | Setup, migrations, tests, deploy, troubleshooting |
 | `docs/DECISIONS.md` | Indonesian | Decision log, including production bugs and their fixes |
 | `docs/specs/` | Indonesian | Product requirements, roadmap, task list |

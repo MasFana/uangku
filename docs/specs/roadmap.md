@@ -27,7 +27,7 @@
 - Investasi & utang: assets (jenis, nilai, updated_at), debts (principal, rate, due); net worth = aset - utang + saldo dompet.
 - Multi-currency: currencies table + kurs harian dari API publik (cache KV TTL 12 h); konversi saat tampil.
 - Laporan PDF: generate via lib edge-safe atau render HTML cetak (window.print) — tanpa email.
-- PWA offline: service worker + antrian mutasi lokal (IndexedDB) → sync via Remote Functions saat online; konflik: last-write-wins per transaksi.
+- PWA offline: **sudah diimplementasikan pada Fase 1** (lihat `CHANGELOG.md`) — service worker + antrian mutasi lokal (IndexedDB) → sync via `/api/sync` saat online; konflik: HLC last-write-wins per transaksi.
 - Sharing keluarga: workspace/family_id pada tabel utama + undangan; permission owner/member.
 
 ## Urutan kerja yang disarankan

@@ -32,7 +32,7 @@ transactions id TEXT PK, user_id FK, wallet_id FK NOT NULL, category_id FK NULL,
 budgets      -- FASE 2
 ```
 
-Konsistensi saldo: saldo dompet dihitung `initial_balance + SUM(income) - SUM(expense) - SUM(transfer keluar) + SUM(transfer masuk)`. Tidak menyimpan saldo redundan di tabel wallets (menghindari drift). Untuk performa dashboard, hasil agregasi per bulan di-cache di KV (TTL 60s, invalidate saat mutasi).
+Konsistensi saldo: saldo dompet dihitung `initial_balance + SUM(income) - SUM(expense) - SUM(transfer keluar) + SUM(transfer masuk)`. Tidak menyimpan saldo redundan di tabel wallets (menghindari drift). Perhitungan ini sekarang dilakukan di klien dari ledger IndexedDB (`src/lib/client/derive/**`), bukan di-cache di KV.
 
 ## 3. User Stories + Kriteria (EARS)
 
@@ -54,7 +54,7 @@ Konsistensi saldo: saldo dompet dihitung `initial_balance + SUM(income) - SUM(ex
 
 ### Transaksi
 - U5: Tambah transaksi ≤10 detik: jumlah (keypad numerik), dompet, kategori, catatan, tanggal (default hari ini).
-  - WHEN submit valid THE SYSTEM SHALL insert dan invalidate cache KV dashboard.
+  - WHEN submit valid THE SYSTEM SHALL insert dan menerapkan mutasi ke ledger lokal lalu menyinkronkannya lewat `/api/sync`.
   - WHEN amount ≤ 0 atau kosong THE SYSTEM SHALL menolak dengan pesan inline (Valibot).
 - U6: Foto struk: pilih gambar → upload presigned URL R2 (max 5 MB, image/*) → simpan receipt_key.
   - WHEN file > 5 MB atau tipe tidak didukung THE SYSTEM SHALL menolak sebelum upload.
@@ -67,7 +67,7 @@ Konsistensi saldo: saldo dompet dihitung `initial_balance + SUM(income) - SUM(ex
 
 ### Dashboard
 - U10: Dashboard: total saldo semua dompet, arus kas bulan berjalan (in/out/net), breakdown kategori pengeluaran bulan ini, grafik 6 bulan terakhir, 10 transaksi terakhir.
-  - WHEN data dibutuhkan dan cache KV valid THE SYSTEM SHALL membaca dari KV (hit < 5 ms).
+  - WHEN data dibutuhkan THE SYSTEM SHALL membaca dari ledger IndexedDB lokal, tanpa permintaan jaringan.
 
 ### Export
 - U11: Export CSV seluruh transaksi (kolom: tanggal, tipe, dompet, kategori, jumlah, catatan). Generate streaming dari D1 → response attachment.
@@ -102,7 +102,7 @@ Semua fungsi: cek session di awal; `locals.user` dari Better-Auth (hooks.server.
 
 ## 7. Acceptance (Given-When-Then ringkas)
 - Given 3 dompet WHEN dashboard THEN total = jumlah saldo + mutasi benar.
-- Given transaksi baru WHEN dibuat THEN cache KV dashboard ter-invalidate (verify: hitung ulang).
+- Given transaksi baru WHEN dibuat THEN saldo dan ringkasan dihitung ulang dari ledger lokal (verify: turunan klien cocok dengan agregat SQL D1).
 - Given transfer 50rb A→B THEN saldo A -50rb, B +50rb, satu baris type=transfer.
 - Given export THEN CSV valid, kolom escape benar (note berisi koma/kutip).
-- Given test saldo: unit test kalkulasi saldo (income/expense/transfer mix) lulus di vitest-pool-workers.
+- Given test saldo: unit test kalkulasi saldo (income/expense/transfer mix) lulus di Vitest.
