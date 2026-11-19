@@ -50,6 +50,18 @@ export function isPublicRequest(event: {
 	return false;
 }
 
+/** API routes answer 401 JSON; a browser redirect would hand `fetch` an HTML page. */
+export function isApiRoute(pathname: string): boolean {
+	return pathname === '/api' || pathname.startsWith('/api/');
+}
+
+export function unauthorizedApiResponse(): Response {
+	return new Response(JSON.stringify({ error: 'UNAUTHENTICATED' }), {
+		status: 401,
+		headers: { 'content-type': 'application/json', 'cache-control': 'no-store' }
+	});
+}
+
 export function loginRedirectUrl(pathname: string, search: string): string {
 	const fullPath = `${pathname}${search}`;
 	return `/login?redirectTo=${encodeURIComponent(fullPath)}`;

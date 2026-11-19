@@ -1,5 +1,10 @@
 import { describe, it, expect } from 'vitest';
-import { isPublicRoute, isPublicRequest, loginRedirectUrl } from '../src/lib/server/guard';
+import {
+	isApiRoute,
+	isPublicRoute,
+	isPublicRequest,
+	loginRedirectUrl
+} from '../src/lib/server/guard';
 
 describe('Pure Route Guard Logic', () => {
 	describe('isPublicRoute', () => {
@@ -99,5 +104,14 @@ describe('Pure Route Guard Logic', () => {
 		it('handles root path', () => {
 			expect(loginRedirectUrl('/', '')).toBe('/login?redirectTo=%2F');
 		});
+	});
+});
+
+describe('isApiRoute', () => {
+	it('matches api endpoints only, so unauthenticated fetch gets 401 instead of a redirect', () => {
+		expect(isApiRoute('/api/sync')).toBe(true);
+		expect(isApiRoute('/api')).toBe(true);
+		expect(isApiRoute('/apiary')).toBe(false);
+		expect(isApiRoute('/transactions')).toBe(false);
 	});
 });

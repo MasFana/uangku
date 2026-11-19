@@ -300,24 +300,33 @@ export const POST: RequestHandler = async (event) => {
 	})) as unknown as CategoryDTO[];
 	const deltaTransactionsDto = deltaTransactions as unknown as TransactionDTO[];
 
-	// The cursor must clear every row we just handed out, otherwise a row
-	// written by another device in the same millisecond is skipped forever.
+	// Cursor = highest watermark actually handed out. Never `serverNow`: a row
+	// written by another device between the delta SELECT and this line would sit
+	// below the cursor and be skipped forever (no poll exists to rediscover it).
+	// Re-delivering a row is idempotent; skipping one is permanent divergence.
 	let maxDelta = 0;
 	for (const row of deltaWalletsDto) if (row.serverUpdatedAt > maxDelta) maxDelta = row.serverUpdatedAt;
 	for (const row of deltaCategoriesDto) if (row.serverUpdatedAt > maxDelta) maxDelta = row.serverUpdatedAt;
 	for (const row of deltaTransactionsDto) if (row.serverUpdatedAt > maxDelta) maxDelta = row.serverUpdatedAt;
-	const newCursor = Math.max(serverNow, maxDelta, clientCursor);
+	const newCursor = Math.max(maxDelta, clientCursor);
 
-	console.log(
-		JSON.stringify({
-			event: 'sync_cycle',
-			userId,
-			applied,
-			rejected: rejected.length,
-			cursor: clientCursor,
-			newCursor
-		})
-	);
+	const deltaCount =
+		deltaWalletsDto.length + deltaCategoriesDto.length + deltaTransactionsDto.length;
+	// Log only cycles that did something: an idle pull is not worth an observability event.
+	if (applied > 0 || rejected.length > 0 || canonicalized.length > 0 || deltaCount > 0) {
+		console.log(
+			JSON.stringify({
+				event: 'sync_cycle',
+				userId,
+				applied,
+				rejected: rejected.length,
+				canonicalized: canonicalized.length,
+				delta: deltaCount,
+				cursor: clientCursor,
+				newCursor
+			})
+		);
+	}
 
 	const responsePayload: SyncResponsePayload = {
 		newCursor,

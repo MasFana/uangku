@@ -20,13 +20,6 @@ export interface SyncMetaRecord {
 	value: any;
 }
 
-export interface PendingBlobRecord {
-	id: string; // receiptKey
-	blob: Blob;
-	contentType: string;
-	createdAt: string;
-}
-
 export interface OutboxRecord extends SyncPushMutation {
 	id: string; // uuid or ulid of mutation
 	createdAt: string;
@@ -74,13 +67,7 @@ export function openLedgerDB(userId: string): Promise<IDBDatabase> {
 				store.createIndex('by_created', 'createdAt', { unique: false });
 			}
 
-			// 5. Pending Blobs Store (Receipt images awaiting R2 upload)
-			if (!db.objectStoreNames.contains('pending_blobs')) {
-				const store = db.createObjectStore('pending_blobs', { keyPath: 'id' });
-				store.createIndex('by_created', 'createdAt', { unique: false });
-			}
-
-			// 6. Sync Meta Store (cursor, lastSyncAt, nodeId)
+			// 5. Sync Meta Store (cursor, clock offset)
 			if (!db.objectStoreNames.contains('sync_meta')) {
 				db.createObjectStore('sync_meta', { keyPath: 'key' });
 			}

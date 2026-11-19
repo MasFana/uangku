@@ -3,8 +3,7 @@ import {
 	idbGetAll,
 	idbGet,
 	idbDelete,
-	type OutboxRecord,
-	type PendingBlobRecord
+	type OutboxRecord
 } from '../db/idb';
 import type {
 	WalletDTO,
@@ -14,8 +13,8 @@ import type {
 	SyncRequestPayload,
 	SyncResponsePayload
 } from '$lib/shared/sync-contract';
+import { SYNC_PROTOCOL_VERSION } from '$lib/shared/sync-contract';
 import { createHLCState, type HLCState } from '$lib/shared/hlc';
-import { version } from '$app/env';
 import {
 	mergeDelta,
 	parseForceServerIds,
@@ -28,7 +27,7 @@ import {
 } from './merge';
 import {
 	shouldResetCursor,
-	APP_VERSION_META_KEY,
+	SYNC_PROTOCOL_META_KEY,
 	CURSOR_META_KEY
 } from './cursor-reset';
 import { LocalLedger } from '../db/local-ledger';
@@ -96,12 +95,8 @@ class ReactiveSyncEngine {
 	/** Bumped by every init/dispose so a slow open for a previous user is discarded. */
 	private initToken = 0;
 
-	private onVisibility = () => {
-		if (document.visibilityState === 'visible') void this.triggerSync();
-	};
-	private onFocus = () => {
-		void this.triggerSync();
-	};
+	// Event-driven only: no periodic poll. Cycles start on a local mutation, on a
+	// page load/hard reload (`init`), on reconnect with queued writes, or from the SW.
 	private onOnline = () => {
 		void this.triggerSync();
 	};
@@ -131,16 +126,17 @@ class ReactiveSyncEngine {
 			await this.loadPersistedClockOffset();
 			this.bus = new BroadcastChannel('ledger_sync_bus');
 			this.bus.onmessage = (event) => {
-				if (event.data?.type === 'RELOAD_LOCAL_DATA') {
-					void this.reloadLocalData();
-				}
+				if (event.data?.type !== 'SYNCED') return;
+				// Same IndexedDB backs every tab: re-read rows, but skip this tab's own
+				// network pull — the tab that just synced already covered it.
+				this.coordinator?.noteExternalSync(Number(event.data.at));
+				void this.reloadLocalData();
 			};
 
 			this.coordinator = new SyncCoordinator({
 				runCycle: (signal) => this.executeSyncCycle(signal),
 				readPendingCount: () => this.countOutbox(),
 				isOnline: () => typeof navigator === 'undefined' || navigator.onLine,
-				isVisible: () => typeof document === 'undefined' || document.visibilityState === 'visible',
 				acquireLock: (task) => this.withSyncLock(task),
 				onStatus: (status) => {
 					this.status = status;
@@ -153,19 +149,15 @@ class ReactiveSyncEngine {
 				}
 			});
 
-			document.addEventListener('visibilitychange', this.onVisibility);
-			window.addEventListener('focus', this.onFocus);
 			window.addEventListener('online', this.onOnline);
 			if (typeof navigator !== 'undefined' && navigator.serviceWorker) {
 				navigator.serviceWorker.addEventListener('message', this.onServiceWorkerMessage);
 			}
-			// Before the first cycle can run: an app upgrade drops the pull cursor once.
-			await this.reconcileCursorWithAppVersion();
-
-			this.coordinator.startPeriodic();
+			// Before the first cycle can run: a protocol change drops the pull cursor once.
+			await this.reconcileCursorWithProtocol();
 
 			await this.reloadLocalData();
-			// Single initial trigger; periodic/visibility/focus/online handle the rest.
+			// The one pull every page load gets; everything else is mutation-driven.
 			void this.triggerSync();
 		} catch (err) {
 			console.warn('Sync engine init error:', err);
@@ -179,8 +171,6 @@ class ReactiveSyncEngine {
 
 	dispose() {
 		if (typeof window !== 'undefined') {
-			document.removeEventListener('visibilitychange', this.onVisibility);
-			window.removeEventListener('focus', this.onFocus);
 			window.removeEventListener('online', this.onOnline);
 		}
 		if (typeof navigator !== 'undefined' && navigator.serviceWorker) {
@@ -285,30 +275,39 @@ class ReactiveSyncEngine {
 	}
 
 	/**
-	 * One-shot per init, before the first cycle: if a cursor exists and the app
-	 * version it was recorded under differs from the running one (or was never
-	 * recorded, i.e. a DB from before this check), drop the cursor so the next pull
-	 * re-delivers every row the cursor had already passed. The outbox is deliberately
-	 * untouched.
+	 * One-shot per init, before the first cycle: if a cursor exists and the sync
+	 * protocol version it was recorded under differs (or was never recorded, i.e. a
+	 * DB from before this check), drop the cursor so the next pull re-delivers every
+	 * row the cursor had already passed. The outbox is deliberately untouched.
+	 *
+	 * The version is a protocol constant, not the build version: a deploy that does
+	 * not change the row shape or the merge rules must not re-download every ledger.
 	 *
 	 * Whole body is best-effort: a failed `sync_meta` read/write must never throw out
 	 * of `init` (the cursor simply stays as-is and the version is retried next init).
 	 */
-	private async reconcileCursorWithAppVersion(): Promise<void> {
+	private async reconcileCursorWithProtocol(): Promise<void> {
 		const db = this.db;
 		if (!db) return;
 		try {
 			const [cursor, stored] = await Promise.all([
 				idbGet<{ key: string; value: number }>(db, 'sync_meta', CURSOR_META_KEY),
-				idbGet<{ key: string; value: string }>(db, 'sync_meta', APP_VERSION_META_KEY)
+				idbGet<{ key: string; value: string }>(db, 'sync_meta', SYNC_PROTOCOL_META_KEY)
 			]);
 			// No cursor yet (fresh install) → nothing to reset; a cursor with no recorded
 			// version is a pre-upgrade-check DB and must re-pull in full.
-			if (!shouldResetCursor(cursor !== undefined, stored?.value, version)) return;
+			if (!shouldResetCursor(cursor !== undefined, stored?.value, SYNC_PROTOCOL_VERSION)) return;
 			await idbDelete(db, 'sync_meta', CURSOR_META_KEY);
-			console.log(JSON.stringify({ event: 'sync_cursor_reset', from: stored?.value, to: version }));
+			await idbDelete(db, 'sync_meta', 'appVersion'); // pre-protocol key
+			console.log(
+				JSON.stringify({
+					event: 'sync_cursor_reset',
+					from: stored?.value ?? null,
+					to: SYNC_PROTOCOL_VERSION
+				})
+			);
 		} catch (err) {
-			console.warn('Sync cursor version check skipped:', err);
+			console.warn('Sync cursor protocol check skipped:', err);
 		}
 	}
 
@@ -343,10 +342,7 @@ class ReactiveSyncEngine {
 	private async runSyncCycle(signal: AbortSignal): Promise<void> {
 		if (!this.db) return;
 
-		// 1. Flush pending receipt blobs to R2
-		await this.flushPendingReceiptBlobs(signal);
-
-		// 2. Read outbox mutations, cursor, and the forced-adoption set left by an
+		// 1. Read outbox mutations, cursor, and the forced-adoption set left by an
 		// earlier rejected push.
 		const outboxItems = await idbGetAll<OutboxRecord>(this.db, 'outbox');
 		const cursorMeta = await idbGet<{ key: string; value: number }>(this.db, 'sync_meta', 'cursor');
@@ -413,32 +409,9 @@ class ReactiveSyncEngine {
 		// notice lives until a pull comes back with neither.
 		this.conflictNotice = rejectionNotice([...data.rejected, ...data.canonicalized]);
 
-		// 6. Update reactive state & notify other tabs
-		await this.reloadLocalData();
-		this.bus?.postMessage({ type: 'RELOAD_LOCAL_DATA' });
-	}
-
-	private async flushPendingReceiptBlobs(signal: AbortSignal): Promise<void> {
-		if (!this.db) return;
-		const blobs = await idbGetAll<PendingBlobRecord>(this.db, 'pending_blobs');
-		for (const item of blobs) {
-			try {
-				const formData = new FormData();
-				formData.append('key', item.id);
-				formData.append('file', item.blob);
-
-				const res = await fetch('/api/receipts/upload', {
-					method: 'POST',
-					body: formData,
-					signal
-				});
-				if (res.ok) {
-					await idbDelete(this.db, 'pending_blobs', item.id);
-				}
-			} catch {
-				// Aborted or failed: retry on next cycle
-			}
-		}
+		// 6. Notify other tabs. Reactive arrays were already set from the merge result
+		// inside `commitSyncResultToIDB`, so no second full read of this tab's stores.
+		this.bus?.postMessage({ type: 'SYNCED', at: Date.now() });
 	}
 
 	private async commitSyncResultToIDB(
@@ -476,6 +449,9 @@ class ReactiveSyncEngine {
 		// cannot slip between the HLC compare and the put (no lost update window).
 		let mergedState: LocalState | null = null;
 		const txDone = Promise.withResolvers<LocalState | null>();
+		// ponytail: reads all three stores to merge delta rows. Ceiling: O(n) IDB read
+		// per cycle. Upgrade: fetch only the delta/forced ids with `getAll(id)` once a
+		// ledger grows past ~50k rows; correctness stays identical.
 		const walletReq = walletStore.getAll();
 		const categoryReq = categoryStore.getAll();
 		const txReq = txStore.getAll();
@@ -529,10 +505,10 @@ class ReactiveSyncEngine {
 				// be re-delivered: drop the cursor so the next pull is a full delta.
 				metaStore.delete(CURSOR_META_KEY);
 			} else {
-				// `APP_VERSION_META_KEY` only now that a full cycle succeeded — an upgrade
+				// The protocol marker is stamped only now that a full cycle succeeded: an upgrade
 				// that never syncs keeps its cursor reset pending.
 				metaStore.put({ key: CURSOR_META_KEY, value: response.newCursor });
-				metaStore.put({ key: APP_VERSION_META_KEY, value: version });
+				metaStore.put({ key: SYNC_PROTOCOL_META_KEY, value: SYNC_PROTOCOL_VERSION });
 			}
 		};
 		walletReq.onsuccess = applyDeltaWhenLoaded;

@@ -7,6 +7,15 @@ export type WalletType = 'cash' | 'bank' | 'ewallet' | 'other';
 export type CategoryKind = 'expense' | 'income';
 export type TransactionType = 'expense' | 'income' | 'transfer';
 
+/**
+ * Cursor compatibility marker stored in `sync_meta.syncProtocol`.
+ *
+ * Bump ONLY when the delta row shape or the client merge rules change: a stored
+ * value that differs makes every client do one full re-pull. Deliberately not the
+ * build version — a deploy that does not touch sync must not re-download ledgers.
+ */
+export const SYNC_PROTOCOL_VERSION = '1';
+
 export interface BaseEntityDTO {
 	id: string;
 	userId: string;

@@ -11,16 +11,9 @@ import { resolve } from '$app/paths';
 import { isCacheable, routeRequest } from '$lib/client/sw-cache-policy';
 
 declare global {
-	// Background Sync and Periodic Background Sync are missing from the TypeScript
-	// webworker lib, including `registration.periodicSync`.
+	// Background Sync is missing from the TypeScript webworker lib.
 	interface ServiceWorkerGlobalScopeEventMap {
 		sync: ExtendableEvent & { readonly tag: string };
-		periodicsync: ExtendableEvent & { readonly tag: string };
-	}
-	interface ServiceWorkerRegistration {
-		readonly periodicSync?: {
-			register(tag: string, options: { minInterval: number }): Promise<void>;
-		};
 	}
 }
 
@@ -92,14 +85,6 @@ self.addEventListener('activate', (event) => {
 					.map((key) => caches.delete(key))
 			);
 
-			// `periodicsync` only fires once a tag is registered, and the permission can
-			// be denied — the `sync` handler below stays the reliable path.
-			try {
-				await self.registration.periodicSync?.register(SYNC_TAG, { minInterval: 15 * 60 * 1000 });
-			} catch {
-				/* unsupported or permission denied */
-			}
-
 			await self.clients.claim();
 		})()
 	);
@@ -117,8 +102,9 @@ function onSync(event: ExtendableEvent): void {
 	event.waitUntil(messageClientsToSync());
 }
 
+// No `periodicsync`: pulls are mutation- and reload-driven. A periodic wake would
+// be polling in disguise and would relay a sync to every open tab.
 self.addEventListener('sync', onSync);
-if (self.registration.periodicSync) self.addEventListener('periodicsync', onSync);
 
 /** Fetch that gives up after `ms` so a dead network still reaches the cache. */
 async function fetchWithTimeout(request: Request, ms: number): Promise<Response> {

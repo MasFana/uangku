@@ -153,3 +153,32 @@ Larangan visual (dari skill antislop, tetap berlaku): gradien ungu-biru, kartu b
 - Ditolak: **menolak** stempel masa depan. Itu menghapus hasil edit pengguna hanya karena jam perangkatnya salah, dan untuk baris baru tidak ada versi server yang bisa diadopsi sehingga cursor tertahan selamanya.
 - Ditolak: memakai `server_updated_at` saja sebagai penentu urutan. Itu membuang urutan edit offline yang dibuat sebelum sinkron.
 - Batas 60 detik dipilih supaya drift normal (detik) tidak tersentuh, sementara jam yang jelas salah (menit sampai tahun) selalu dilipat.
+
+## Kuota Cloudflare Free Tier
+
+- Beban per siklus sync diukur dari kode, bukan tebakan: satu `POST /api/sync` = 1 Worker request, tiga `SELECT` delta, tiga `SELECT` kepemilikan (hanya bila ada mutasi), dan satu statement tulis per mutasi. Delta memakai indeks `(user_id, server_updated_at, id)`, jadi range kosong membaca **0 rows** — kuota 5 juta rows read/hari praktis tidak tersentuh saat idle. Yang benar-benar dipakai idle hanyalah kuota 100 ribu Worker request/hari.
+- `daily_rollups` dan `monthly_rollups` dihapus (`drizzle/0004_wild_sway.sql`). Tidak ada satu pun query yang membacanya sejak analitik dihitung di klien, tetapi trigger menulis 2 baris tambahan per transaksi (4 rows per insert, 7 rows per update). Trigger dibuat ulang hanya dengan statement saldo dompet, karena trigger yang masih menunjuk tabel terhapus akan menggagalkan setiap tulis transaksi.
+- Bukti trigger baru: insert transaksi income 5000 → `wallets.current_balance` 5000; soft-delete (hlc berubah) → kembali 0. `tests/be/categories-watermark.test.ts` mengunci jalur insert.
+- Dedupe lintas tab lewat `BroadcastChannel`: setelah commit, tab pengirim mengirim `{ type: 'SYNCED', at }`, tab lain memanggil `SyncCoordinator.noteExternalSync(at)` dan tick 30 s-nya dilewati aturan freshness. Tanpa ini N tab = N siklus per 30 s (5 tab × 7 perangkat = 100.800 request/hari, habis).
+- `reloadLocalData()` di akhir siklus dihapus: `commitSyncResultToIDB` sudah memasang array reaktif dari hasil merge, jadi pembacaan ulang empat store itu duplikat penuh per siklus.
+- Ditolak: cache KV di depan cursor. KV membaca per request (100 ribu/hari) sedangkan delta D1 kosong membaca 0 rows; KV menulis dibatasi 1.000/hari; dan konsistensi eventual hingga 60 detik bisa menjawab "tidak ada perubahan" padahal baris sudah ada, lalu `newCursor = max(serverNow, …)` melewatinya secara permanen.
+- Ditolak: memperlambat poll 30 s. Satu tab = 2.880 request/hari (2,9% kuota); menaikkannya menukar latensi multi-perangkat dengan tabungan yang tidak dibutuhkan.
+
+## Pemicu sync: hanya mutasi dan muat halaman
+
+- Poll 30 detik dihapus, begitu juga pemicu `focus`, `visibilitychange`, dan registrasi `periodicsync` di service worker. Siklus sekarang hanya terjadi saat: satu kali per muat halaman (`init`), setiap mutasi lokal, reconnect yang masih punya outbox, dan pesan Background Sync satu kali dari worker.
+- Alasan angka: poll 30 detik = 2.880 request/hari per tab, sementara satu tab yang hanya sync saat menulis menghabiskan puluhan request/hari. Kuota Worker Free Tier 100 ribu/hari tidak lagi jadi pertimbangan.
+- Trade-off yang diterima pemilik: perubahan dari perangkat lain baru terlihat saat halaman dimuat ulang atau saat pengguna menulis. Tidak ada tarikan latar.
+- `ponytail:` bila suatu saat perlu tarikan saat tab kembali aktif, tambahkan pemicu `visibilitychange` yang hanya menyala setelah tab tersembunyi lebih dari 5 menit — jangan kembalikan interval.
+
+## Cursor sync
+
+- `newCursor = max(maxDelta, clientCursor)`. Versi lama memakai `max(serverNow, maxDelta, clientCursor)`: baris yang ditulis perangkat lain di antara `SELECT` delta dan penulisan respons punya `server_updated_at` di bawah `serverNow` sehingga terlewat selamanya. Tanpa poll, baris yang terlewat tidak akan pernah muncul lagi; mengirim ulang baris hanya idempoten.
+- Versi yang disimpan adalah `SYNC_PROTOCOL_VERSION` (konstanta di `src/lib/shared/sync-contract.ts`), bukan versi build. Sebelumnya setiap deploy (dan setiap rebuild dev) menghapus cursor dan memaksa setiap klien mengunduh ulang seluruh ledger.
+- Batas yang disadari: cursor masih berupa satu angka, jadi baris dengan `server_updated_at` identik dengan cursor tidak terkirim. Menutupnya butuh cursor komposit `(server_updated_at, id)` di kontrak; belum dilakukan karena tabrakan milidetik antar-perangkat praktis nol dan biayanya menyentuh kontrak, server, dan migrasi data klien.
+
+## KV untuk auth: tidak dipakai
+
+- Better-Auth sudah memakai `session.cookieCache` (`maxAge: 300`, `src/lib/server/auth.ts`): sesi divalidasi dari cookie bertanda tangan, jadi `getSession` **tidak** membaca D1 selama 5 menit.
+- Bila KV dipakai sebagai cache sesi: setiap request jadi 1 KV read terhadap kuota 100 ribu/hari, dibanding 1 baris D1 per 5 menit per sesi terhadap kuota 5 juta rows/hari. KV 50x lebih mahal per pembacaan dan menambah langkah invalidasi saat logout.
+- KV tetap tidak ada di `wrangler.jsonc`; `wrangler types` tidak lagi mendeklarasikan binding itu.

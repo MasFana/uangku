@@ -156,32 +156,27 @@ describe('SyncCoordinator pendingCount', () => {
 	});
 });
 
-describe('SyncCoordinator periodic trigger', () => {
-	it('fires only while the tab is visible', async () => {
+describe('SyncCoordinator trigger policy', () => {
+	it('never schedules a cycle on its own', async () => {
 		vi.useFakeTimers();
-		let visible = false;
 		let calls = 0;
 		const coordinator = new SyncCoordinator({
 			runCycle: async () => {
 				calls += 1;
 			},
 			readPendingCount: () => 0,
-			isVisible: () => visible,
-			isOnline: () => true,
-			syncPeriodMs: 30_000
+			isOnline: () => true
 		});
 
-		coordinator.startPeriodic();
-		await vi.advanceTimersByTimeAsync(95_000);
-		expect(calls).toBe(0);
-
-		visible = true;
-		await vi.advanceTimersByTimeAsync(30_000);
-		expect(calls).toBeGreaterThan(0);
+		await coordinator.trigger();
+		expect(calls).toBe(1);
+		// A day of wall clock must not add a single request: no poll exists.
+		await vi.advanceTimersByTimeAsync(24 * 60 * 60 * 1000);
+		expect(calls).toBe(1);
 		coordinator.dispose();
 	});
 
-	it('skips a visible tick when the outbox is empty and the last pull is fresh', async () => {
+	it('skips a repeated trigger when the outbox is empty and the last pull is fresh', async () => {
 		vi.useFakeTimers();
 		const clock = { ms: 10_000_000 };
 		let calls = 0;
@@ -190,10 +185,8 @@ describe('SyncCoordinator periodic trigger', () => {
 				calls += 1;
 			},
 			readPendingCount: () => 0,
-			isVisible: () => true,
 			isOnline: () => true,
-			now: () => clock.ms,
-			syncPeriodMs: 30_000
+			now: () => clock.ms
 		});
 
 		// First tick sees no success yet → pulls.
@@ -205,6 +198,37 @@ describe('SyncCoordinator periodic trigger', () => {
 		expect(calls).toBe(1);
 		// Past the window → pulls again.
 		clock.ms += 30_000;
+		await coordinator.trigger();
+		expect(calls).toBe(2);
+		coordinator.dispose();
+	});
+
+	it('skips its own pull when another tab synced, but still pushes pending writes', async () => {
+		const clock = { ms: 10_000_000 };
+		let depth = 0;
+		let calls = 0;
+		const coordinator = new SyncCoordinator({
+			runCycle: async () => {
+				calls += 1;
+			},
+			readPendingCount: () => depth,
+			isOnline: () => true,
+			now: () => clock.ms
+		});
+
+		coordinator.noteExternalSync(clock.ms - 2_000);
+		await coordinator.trigger();
+		expect(calls).toBe(0);
+
+		// A timestamp from the future must not dock this tab forever.
+		coordinator.noteExternalSync(clock.ms + 999_999);
+		clock.ms += 30_000;
+		await coordinator.trigger();
+		expect(calls).toBe(1);
+
+		// Own pending write always syncs, no matter how fresh the other tab is.
+		depth = 1;
+		coordinator.noteExternalSync(clock.ms);
 		await coordinator.trigger();
 		expect(calls).toBe(2);
 		coordinator.dispose();

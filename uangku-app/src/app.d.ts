@@ -7,7 +7,6 @@ declare global {
 		interface Locals {
 			env?: Cloudflare.Env;
 			db?: AppDatabase;
-			r2?: R2Bucket;
 			auth?: AuthInstance;
 			user?: AuthInstance['$Infer']['Session']['user'] | null;
 			session?: AuthInstance['$Infer']['Session']['session'] | null;

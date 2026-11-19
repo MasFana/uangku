@@ -2,11 +2,11 @@ import { describe, expect, it } from 'vitest';
 import { shouldResetCursor } from '../../src/lib/client/sync/cursor-reset';
 
 describe('shouldResetCursor', () => {
-	it('keeps the cursor when the stored version matches the running one', () => {
+	it('keeps the cursor when the stored protocol matches the running one', () => {
 		expect(shouldResetCursor(true, '1.4.0', '1.4.0')).toBe(false);
 	});
 
-	it('resets the cursor when the app version changed', () => {
+	it('resets the cursor when the sync protocol changed', () => {
 		expect(shouldResetCursor(true, '1.4.0', '1.4.1')).toBe(true);
 	});
 
@@ -17,7 +17,7 @@ describe('shouldResetCursor', () => {
 		expect(shouldResetCursor(false, '1.4.0', '1.4.1')).toBe(false);
 	});
 
-	it('resets a legacy DB (cursor with no recorded version)', () => {
+	it('resets a legacy DB (cursor with no recorded protocol)', () => {
 		expect(shouldResetCursor(true, null, '1.4.0')).toBe(true);
 		expect(shouldResetCursor(true, undefined, '1.4.0')).toBe(true);
 		expect(shouldResetCursor(true, '', '1.4.0')).toBe(true);

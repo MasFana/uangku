@@ -15,8 +15,6 @@ export const BACKOFF_BASE_MS = 1_000;
 export const BACKOFF_CAP_MS = 60_000;
 /** Skip a trigger when outbox is empty and the last success was this recent. */
 export const MIN_PULL_INTERVAL_MS = 30_000;
-/** Periodic pull cadence while the tab is visible. */
-export const SYNC_PERIOD_MS = 30_000;
 
 export interface BackoffOptions {
 	baseMs?: number;
@@ -49,7 +47,6 @@ export interface SyncCoordinatorDeps {
 	/** Authoritative outbox depth (cheap IDB count). */
 	readPendingCount: () => Promise<number> | number;
 	isOnline?: () => boolean;
-	isVisible?: () => boolean;
 	/** Wrap a cycle in the cross-tab lock. Default: run directly. */
 	acquireLock?: (task: () => Promise<void>) => Promise<void>;
 	onStatus?: (status: SyncStatus) => void;
@@ -57,11 +54,9 @@ export interface SyncCoordinatorDeps {
 	onLastError?: (message: string | null) => void;
 	timeoutMs?: number;
 	minPullIntervalMs?: number;
-	syncPeriodMs?: number;
 	backoff?: BackoffOptions;
 	now?: () => number;
 	scheduleOnce?: (fn: () => void, ms: number) => () => void;
-	scheduleRepeating?: (fn: () => void, ms: number) => () => void;
 }
 
 export class SyncCoordinator {
@@ -76,56 +71,29 @@ export class SyncCoordinator {
 	private lastSuccessAt = 0;
 	private epoch = 0;
 	private cancelRetry: (() => void) | null = null;
-	private cancelInterval: (() => void) | null = null;
 	private disposed = false;
 
 	private readonly isOnline: () => boolean;
-	private readonly isVisible: () => boolean;
 	private readonly now: () => number;
 	private readonly timeoutMs: number;
 	private readonly minPullIntervalMs: number;
-	private readonly syncPeriodMs: number;
 	private readonly scheduleOnce: (fn: () => void, ms: number) => () => void;
-	private readonly scheduleRepeating: (fn: () => void, ms: number) => () => void;
 
 	constructor(private deps: SyncCoordinatorDeps) {
 		this.isOnline = deps.isOnline ?? (() => true);
-		this.isVisible = deps.isVisible ?? (() => true);
 		this.now = deps.now ?? Date.now;
 		this.timeoutMs = deps.timeoutMs ?? CYCLE_TIMEOUT_MS;
 		this.minPullIntervalMs = deps.minPullIntervalMs ?? MIN_PULL_INTERVAL_MS;
-		this.syncPeriodMs = deps.syncPeriodMs ?? SYNC_PERIOD_MS;
 		this.scheduleOnce =
 			deps.scheduleOnce ??
 			((fn, ms) => {
 				const handle = setTimeout(fn, ms);
 				return () => clearTimeout(handle);
 			});
-		this.scheduleRepeating =
-			deps.scheduleRepeating ??
-			((fn, ms) => {
-				const handle = setInterval(fn, ms);
-				return () => clearInterval(handle);
-			});
-	}
-
-	/** Periodic pull, only while the tab is visible. Idempotent. */
-	startPeriodic(): void {
-		if (this.cancelInterval !== null || this.disposed) return;
-		this.cancelInterval = this.scheduleRepeating(() => {
-			if (!this.isVisible()) return;
-			void this.trigger();
-		}, this.syncPeriodMs);
-	}
-
-	stopPeriodic(): void {
-		this.cancelInterval?.();
-		this.cancelInterval = null;
 	}
 
 	dispose(): void {
 		this.disposed = true;
-		this.stopPeriodic();
 		this.cancelRetry?.();
 		this.cancelRetry = null;
 	}
@@ -136,6 +104,15 @@ export class SyncCoordinator {
 		if (next === this.pendingCount) return;
 		this.pendingCount = next;
 		this.deps.onPendingCount?.(next);
+	}
+
+	/**
+	 * Another tab completed a cycle: adopt its success time so this tab's next
+	 * periodic tick is skipped by the freshness rule instead of repeating the pull.
+	 */
+	noteExternalSync(atMs: number): void {
+		if (!Number.isFinite(atMs) || atMs <= 0) return;
+		this.lastSuccessAt = Math.max(this.lastSuccessAt, Math.min(atMs, this.now()));
 	}
 
 	/**

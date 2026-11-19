@@ -164,47 +164,6 @@ export const transactions = sqliteTable(
 	]
 );
 
-// --- Materialized Rollup Tables (WITHOUT ROWID in SQLite DDL) ---
-
-export const monthlyRollups = sqliteTable(
-	'monthly_rollups',
-	{
-		userId: text('user_id').notNull(),
-		ym: text('ym').notNull(), // 'YYYY-MM'
-		type: text('type', { enum: transactionTypes }).notNull(),
-		categoryId: text('category_id').notNull().default(''),
-		walletId: text('wallet_id').notNull(),
-		totalAmount: integer('total_amount').notNull().default(0),
-		txCount: integer('tx_count').notNull().default(0)
-	},
-	(table) => [
-		primaryKey({
-			columns: [table.userId, table.ym, table.type, table.categoryId, table.walletId]
-		}),
-		index('idx_monthly_rollups_user_ym').on(table.userId, table.ym)
-	]
-);
-
-export const dailyRollups = sqliteTable(
-	'daily_rollups',
-	{
-		userId: text('user_id').notNull(),
-		ymd: text('ymd').notNull(), // 'YYYY-MM-DD'
-		walletId: text('wallet_id').notNull(),
-		incomeAmount: integer('income_amount').notNull().default(0),
-		expenseAmount: integer('expense_amount').notNull().default(0),
-		transferInAmount: integer('transfer_in_amount').notNull().default(0),
-		transferOutAmount: integer('transfer_out_amount').notNull().default(0),
-		txCount: integer('tx_count').notNull().default(0)
-	},
-	(table) => [
-		primaryKey({
-			columns: [table.userId, table.ymd, table.walletId]
-		}),
-		index('idx_daily_rollups_user_ymd').on(table.userId, table.ymd)
-	]
-);
-
 export type User = typeof users.$inferSelect;
 export type NewUser = typeof users.$inferInsert;
 export type Session = typeof sessions.$inferSelect;
@@ -217,5 +176,3 @@ export type Category = typeof categories.$inferSelect;
 export type NewCategory = typeof categories.$inferInsert;
 export type Transaction = typeof transactions.$inferSelect;
 export type NewTransaction = typeof transactions.$inferInsert;
-export type MonthlyRollup = typeof monthlyRollups.$inferSelect;
-export type DailyRollup = typeof dailyRollups.$inferSelect;

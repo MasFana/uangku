@@ -3,16 +3,17 @@
  *
  * `sync_meta.cursor` is a watermark over the server's `server_updated_at`: rows
  * stamped at or below it are never re-delivered. That is only sound while the
- * client's merge rules are unchanged, so when the app version changes the cursor
- * is dropped once and the next pull is a full delta.
+ * client's merge rules are unchanged, so when `SYNC_PROTOCOL_VERSION` changes the
+ * cursor is dropped once and the next pull is a full delta. The build version is
+ * deliberately not used: every deploy would otherwise re-download every ledger.
  */
 
 /** `sync_meta` keys owned here; the engine reads/writes them via `idbGet`/`idbPut`. */
 export const CURSOR_META_KEY = 'cursor';
-export const APP_VERSION_META_KEY = 'appVersion';
+export const SYNC_PROTOCOL_META_KEY = 'syncProtocol';
 
 /**
- * True when a cursor exists and was recorded under a different app version.
+ * True when a cursor exists and was recorded under a different protocol version.
  *
  * `hasCursor` is what distinguishes the two "no version stamped" states:
  * - no cursor at all = fresh install; its first pull is already a full delta, so

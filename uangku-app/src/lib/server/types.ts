@@ -5,12 +5,10 @@ export interface AppEvent {
 		db?: AppDatabase;
 		user?: { id: string } | null;
 		session?: unknown | null;
-		r2?: unknown;
 	};
 	platform?: {
 		env?: {
 			APP_DB?: unknown;
-			RECEIPTS?: unknown;
 		};
 	};
 }

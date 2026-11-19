@@ -12,6 +12,7 @@ import type { SyncResponsePayload } from '../../src/lib/shared/sync-contract';
 
 const userA = 'user-a';
 const userB = 'user-b';
+const userC = 'user-c';
 
 type Env = { APP_DB: D1Database };
 
@@ -19,7 +20,13 @@ let proxy: PlatformProxy<Env>;
 let db: DrizzleD1Database<typeof schema>;
 
 async function applyMigrations(d1: D1Database): Promise<void> {
-	for (const file of ['drizzle/0000_useful_black_widow.sql', 'drizzle/0002_hlc_sync_rollups_triggers.sql']) {
+	// Whole schema chain, so the triggers under test are the deployed ones.
+	for (const file of [
+		'drizzle/0000_useful_black_widow.sql',
+		'drizzle/0002_hlc_sync_rollups_triggers.sql',
+		'drizzle/0003_category_watermark_scoped_triggers.sql',
+		'drizzle/0004_wild_sway.sql'
+	]) {
 		const sqlContent = readFileSync(join(__dirname, '../..', file), 'utf8');
 		const statements = sqlContent
 			.split('--> statement-breakpoint')
@@ -68,7 +75,8 @@ describe('POST /api/sync', () => {
 		const now = new Date();
 		await db.insert(schema.users).values([
 			{ id: userA, name: 'Alice', email: 'alice@example.com', createdAt: now, updatedAt: now },
-			{ id: userB, name: 'Bob', email: 'bob@example.com', createdAt: now, updatedAt: now }
+			{ id: userB, name: 'Bob', email: 'bob@example.com', createdAt: now, updatedAt: now },
+			{ id: userC, name: 'Cara', email: 'cara@example.com', createdAt: now, updatedAt: now }
 		]);
 	});
 
@@ -245,5 +253,28 @@ describe('POST /api/sync', () => {
 		expect(repoint.rejected).toEqual([{ entityId: 'tx-own', reason: 'forbidden' }]);
 		const ownRow = await db.select().from(schema.transactions).where(eq(schema.transactions.id, 'tx-own'));
 		expect(ownRow[0].walletId).toBe('w1');
+	});
+
+	it('never advances the cursor past a row written after its own delta read', async () => {
+		const empty = await postSync(userC, { cursor: 0, mutations: [] });
+		expect(empty.delta.wallets).toEqual([]);
+
+		// Another device writes in the same millisecond the pull read its clock: a
+		// `serverNow` cursor floor would place it below the cursor and lose it forever.
+		await db.insert(schema.wallets).values({
+			id: 'w-late',
+			userId: userC,
+			name: 'Late',
+			type: 'cash',
+			initialBalance: 0,
+			currentBalance: 0,
+			hlc: '000000a',
+			serverUpdatedAt: empty.serverNow,
+			createdAt: new Date().toISOString()
+		});
+
+		const next = await postSync(userC, { cursor: empty.newCursor, mutations: [] });
+		expect(next.delta.wallets.map((w) => w.id)).toContain('w-late');
+		expect(next.newCursor).toBe(empty.serverNow);
 	});
 });

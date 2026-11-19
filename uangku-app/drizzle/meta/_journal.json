@@ -29,6 +29,20 @@
       "when": 1795067520208,
       "tag": "0003_category_watermark_scoped_triggers",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "6",
+      "when": 1795080482161,
+      "tag": "0004_wild_sway",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "6",
+      "when": 1795082000000,
+      "tag": "0005_drop_orphan_delete_trigger",
+      "breakpoints": true
     }
   ]
 }
