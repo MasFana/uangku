@@ -1,24 +1,21 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
-import { Miniflare } from 'miniflare';
-import { drizzle } from 'drizzle-orm/d1';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { getPlatformProxy, type PlatformProxy } from 'wrangler';
+import { drizzle, type DrizzleD1Database } from 'drizzle-orm/d1';
 import { eq } from 'drizzle-orm';
-import fs from 'node:fs';
-import path from 'node:path';
 import * as schema from '../src/lib/server/db/schema';
-import { DEFAULT_CATEGORIES } from '../src/lib/server/defaults';
-import {
-	seedDefaultsForUser,
-	seedDefaultCategories,
-	listCategories
-} from '../src/lib/server/services/categories';
+import { seedDefaultsForUser } from '../src/lib/server/services/categories';
 import { createAuth } from '../src/lib/server/auth';
 import type { AppEvent } from '../src/lib/server/types';
 import type { D1Database } from '@cloudflare/workers-types';
 
+type Env = { APP_DB: D1Database };
+
 describe('Default Categories Auto-seed & Backfill Tests', () => {
-	let mf: Miniflare;
+	let proxy: PlatformProxy<Env>;
 	let d1: D1Database;
-	let db: ReturnType<typeof drizzle<typeof schema>>;
+	let db: DrizzleD1Database<typeof schema>;
 
 	const userA = 'user-autoseed-alice';
 	const userB = 'user-autoseed-bob';
@@ -34,45 +31,28 @@ describe('Default Categories Auto-seed & Backfill Tests', () => {
 		} as unknown as AppEvent;
 	}
 
-	beforeAll(async () => {
-		mf = new Miniflare({
-			workers: [
-				{
-					config: {
-						name: 'uangku-autoseed-worker',
-						compatibilityDate: '2026-11-10',
-						manifest: {
-							modulesRoot: path.resolve('.'),
-							mainModule: 'test-entry.js',
-							modules: {
-								'test-entry.js': {
-									type: 'esm',
-									contents: 'export default { fetch() { return new Response("ok"); } };'
-								}
-							}
-						},
-						env: {
-							APP_DB: { type: 'd1', id: 'test-autoseed-db' }
-						}
-					}
-				}
-			]
-		});
-
-		d1 = (await mf.getD1Database('APP_DB')) as unknown as D1Database;
-
-		// Apply baseline migration
-		const baseMigrationPath = path.resolve('drizzle/0000_useful_black_widow.sql');
-		const baseSql = fs.readFileSync(baseMigrationPath, 'utf8');
-		const baseStatements = baseSql
-			.split('--> statement-breakpoint')
-			.map((s) => s.trim())
-			.filter(Boolean);
-
-		for (const stmt of baseStatements) {
-			await d1.prepare(stmt).run();
+	async function applyMigrations(target: D1Database): Promise<void> {
+		for (const file of [
+			'drizzle/0000_useful_black_widow.sql',
+			'drizzle/0001_backfill_default_categories.sql',
+			'drizzle/0002_hlc_sync_rollups_triggers.sql',
+			'drizzle/0003_category_watermark_scoped_triggers.sql'
+		]) {
+			const sqlContent = readFileSync(join(__dirname, '..', file), 'utf8');
+			const statements = sqlContent
+				.split('--> statement-breakpoint')
+				.map((s) => s.trim())
+				.filter(Boolean);
+			for (const statement of statements) {
+				await target.prepare(statement).run();
+			}
 		}
+	}
 
+	beforeAll(async () => {
+		proxy = await getPlatformProxy<Env>({ configPath: 'wrangler.jsonc', persist: false });
+		d1 = proxy.env.APP_DB;
+		await applyMigrations(d1);
 		db = drizzle(d1, { schema });
 
 		const now = new Date();
@@ -84,7 +64,7 @@ describe('Default Categories Auto-seed & Backfill Tests', () => {
 	});
 
 	afterAll(async () => {
-		if (mf) await mf.dispose();
+		await proxy?.dispose();
 	});
 
 	it('seedDefaultsForUser: inserts 17 categories (12 expense + 5 income) without duplicates', async () => {
@@ -102,6 +82,12 @@ describe('Default Categories Auto-seed & Backfill Tests', () => {
 		const incomeRows = rows.filter((r) => r.kind === 'income');
 		expect(expenseRows).toHaveLength(12);
 		expect(incomeRows).toHaveLength(5);
+
+		// Migration stamps every seeded row with HLC + server watermark.
+		for (const row of rows) {
+			expect(row.hlc).not.toBe('');
+			expect(row.serverUpdatedAt).toBeGreaterThan(0);
+		}
 
 		// Unique constraint check
 		const keys = rows.map((r) => `${r.kind}:${r.name.toLowerCase()}`);
@@ -179,9 +165,15 @@ describe('Default Categories Auto-seed & Backfill Tests', () => {
 		expect(beforeRows).toHaveLength(0);
 
 		// Execute custom backfill migration SQL
-		const backfillPath = path.resolve('drizzle/0001_backfill_default_categories.sql');
-		const backfillSql = fs.readFileSync(backfillPath, 'utf8');
-		await d1.prepare(backfillSql).run();
+		const backfillPath = join(__dirname, '..', 'drizzle/0001_backfill_default_categories.sql');
+		const backfillSql = readFileSync(backfillPath, 'utf8');
+		const backfillStatements = backfillSql
+			.split('--> statement-breakpoint')
+			.map((s) => s.trim())
+			.filter(Boolean);
+		for (const statement of backfillStatements) {
+			await d1.prepare(statement).run();
+		}
 
 		const afterRows = await db
 			.select()
@@ -190,7 +182,9 @@ describe('Default Categories Auto-seed & Backfill Tests', () => {
 		expect(afterRows).toHaveLength(17);
 
 		// Execute backfill migration SQL second time
-		await d1.prepare(backfillSql).run();
+		for (const statement of backfillStatements) {
+			await d1.prepare(statement).run();
+		}
 
 		const secondAfterRows = await db
 			.select()

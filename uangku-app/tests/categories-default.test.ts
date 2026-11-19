@@ -1,18 +1,20 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
-import { Miniflare } from 'miniflare';
-import { drizzle } from 'drizzle-orm/d1';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { getPlatformProxy, type PlatformProxy } from 'wrangler';
+import { drizzle, type DrizzleD1Database } from 'drizzle-orm/d1';
 import { eq } from 'drizzle-orm';
-import fs from 'node:fs';
-import path from 'node:path';
 import * as schema from '../src/lib/server/db/schema';
 import { DEFAULT_CATEGORIES } from '../src/lib/server/defaults';
 import { seedDefaultCategories, listCategories } from '../src/lib/server/services/categories';
 import type { AppEvent } from '../src/lib/server/types';
 import type { D1Database } from '@cloudflare/workers-types';
 
+type Env = { APP_DB: D1Database };
+
 describe('Default Categories Seeding Unit & Integration Tests', () => {
-	let mf: Miniflare;
-	let db: ReturnType<typeof drizzle<typeof schema>>;
+	let proxy: PlatformProxy<Env>;
+	let db: DrizzleD1Database<typeof schema>;
 
 	const userA = 'user-cat-alice';
 	const userB = 'user-cat-bob';
@@ -28,49 +30,28 @@ describe('Default Categories Seeding Unit & Integration Tests', () => {
 		} as unknown as AppEvent;
 	}
 
+	async function applyMigrations(d1: D1Database): Promise<void> {
+		for (const file of [
+			'drizzle/0000_useful_black_widow.sql',
+			'drizzle/0001_backfill_default_categories.sql',
+			'drizzle/0002_hlc_sync_rollups_triggers.sql',
+			'drizzle/0003_category_watermark_scoped_triggers.sql'
+		]) {
+			const sqlContent = readFileSync(join(__dirname, '..', file), 'utf8');
+			const statements = sqlContent
+				.split('--> statement-breakpoint')
+				.map((s) => s.trim())
+				.filter(Boolean);
+			for (const statement of statements) {
+				await d1.prepare(statement).run();
+			}
+		}
+	}
+
 	beforeAll(async () => {
-		mf = new Miniflare({
-			workers: [
-				{
-					config: {
-						name: 'uangku-cat-worker',
-						compatibilityDate: '2026-11-10',
-						manifest: {
-							modulesRoot: path.resolve('.'),
-							mainModule: 'test-entry.js',
-							modules: {
-								'test-entry.js': {
-									type: 'esm',
-									contents: 'export default { fetch() { return new Response("ok"); } };'
-								}
-							}
-						},
-						env: {
-							APP_DB: { type: 'd1', id: 'test-categories-db' }
-						}
-					}
-				}
-			]
-		});
-
-		const d1 = (await mf.getD1Database('APP_DB')) as unknown as D1Database;
-		for (const file of ["drizzle/0000_useful_black_widow.sql", "drizzle/0002_hlc_sync_rollups_triggers.sql"]) {
-			const migrationPath = path.resolve(file);
-			const sqlContent = fs.readFileSync(migrationPath, "utf8");
-			const statements = sqlContent.split("--> statement-breakpoint").map((s) => s.trim()).filter(Boolean);
-			for (const stmt of statements) { await d1.prepare(stmt).run(); }
-		}
-		const sqlContent = fs.readFileSync(migrationPath, 'utf8');
-		const statements = sqlContent
-			.split('--> statement-breakpoint')
-			.map((s) => s.trim())
-			.filter(Boolean);
-
-		for (const stmt of statements) {
-			await d1.prepare(stmt).run();
-		}
-
-		db = drizzle(d1, { schema });
+		proxy = await getPlatformProxy<Env>({ configPath: 'wrangler.jsonc', persist: false });
+		await applyMigrations(proxy.env.APP_DB);
+		db = drizzle(proxy.env.APP_DB, { schema });
 
 		const now = new Date();
 		await db.insert(schema.users).values([
@@ -82,7 +63,7 @@ describe('Default Categories Seeding Unit & Integration Tests', () => {
 	});
 
 	afterAll(async () => {
-		if (mf) await mf.dispose();
+		await proxy?.dispose();
 	});
 
 	it('has exactly 17 default categories (12 expense + 5 income)', () => {
@@ -214,7 +195,9 @@ describe('Default Categories Seeding Unit & Integration Tests', () => {
 		expect(reseededCount).toBe(1); // 'Gaji' re-inserted as active
 
 		const activeBobAfter = await listCategories(event, { includeArchived: false });
-		const activeGaji = activeBobAfter.filter((c) => c.kind === 'income' && c.name.toLowerCase() === 'gaji');
+		const activeGaji = activeBobAfter.filter(
+			(c) => c.kind === 'income' && c.name.toLowerCase() === 'gaji'
+		);
 		expect(activeGaji).toHaveLength(1);
 		expect(activeGaji[0].name).toBe('Gaji'); // Default seeded name
 	});

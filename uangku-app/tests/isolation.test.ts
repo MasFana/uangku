@@ -1,66 +1,51 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
-import { Miniflare } from 'miniflare';
-import { drizzle } from 'drizzle-orm/d1';
-import fs from 'node:fs';
-import path from 'node:path';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { getPlatformProxy, type PlatformProxy } from 'wrangler';
+import { drizzle, type DrizzleD1Database } from 'drizzle-orm/d1';
+import type { D1Database } from '@cloudflare/workers-types';
 import * as schema from '../src/lib/server/db/schema';
 import { WalletsRepo } from '../src/lib/server/repos/wallets';
 import { CategoriesRepo } from '../src/lib/server/repos/categories';
 import { TransactionsRepo } from '../src/lib/server/repos/transactions';
-import type { D1Database } from '@cloudflare/workers-types';
+
+const userA = 'user-alice-uuid-1';
+const userB = 'user-bob-uuid-2';
+
+type Env = { APP_DB: D1Database };
+
+let proxy: PlatformProxy<Env>;
+let db: DrizzleD1Database<typeof schema>;
+let walletsRepo: WalletsRepo;
+let categoriesRepo: CategoriesRepo;
+let transactionsRepo: TransactionsRepo;
+
+async function applyMigrations(d1: D1Database): Promise<void> {
+	// All migrations in order. 0003 drops and re-creates the wallet-mutating
+	// triggers with `AND user_id = NEW.user_id` scoping — that scoping is what
+	// makes the cross-user balance assertions below hold.
+	for (const file of [
+		'drizzle/0000_useful_black_widow.sql',
+		'drizzle/0001_backfill_default_categories.sql',
+		'drizzle/0002_hlc_sync_rollups_triggers.sql',
+		'drizzle/0003_category_watermark_scoped_triggers.sql'
+	]) {
+		const sqlContent = readFileSync(join(__dirname, '..', file), 'utf8');
+		const statements = sqlContent
+			.split('--> statement-breakpoint')
+			.map((s) => s.trim())
+			.filter(Boolean);
+		for (const statement of statements) {
+			await d1.prepare(statement).run();
+		}
+	}
+}
 
 describe('Tenant Isolation Tests (D1 Integration)', () => {
-	let mf: Miniflare;
-	let db: ReturnType<typeof drizzle<typeof schema>>;
-	let walletsRepo: WalletsRepo;
-	let categoriesRepo: CategoriesRepo;
-	let transactionsRepo: TransactionsRepo;
-
-	const userA = 'user-alice-uuid-1';
-	const userB = 'user-bob-uuid-2';
-
 	beforeAll(async () => {
-		mf = new Miniflare({
-			workers: [
-				{
-					config: {
-						name: 'uangku-test-worker',
-						compatibilityDate: '2026-11-10',
-						manifest: {
-							modulesRoot: path.resolve('.'),
-							mainModule: 'test-entry.js',
-							modules: {
-								'test-entry.js': {
-									type: 'esm',
-									contents: 'export default { fetch() { return new Response("ok"); } };'
-								}
-							}
-						},
-						env: {
-							APP_DB: { type: 'd1', id: 'test-isolation-db' }
-						}
-					}
-				}
-			]
-		});
-
-		const d1 = (await mf.getD1Database('APP_DB')) as unknown as D1Database;
-
-		// Execute schema migrations
-		for (const file of ['drizzle/0000_useful_black_widow.sql', 'drizzle/0002_hlc_sync_rollups_triggers.sql']) {
-			const migrationPath = path.resolve(file);
-			const sqlContent = fs.readFileSync(migrationPath, 'utf8');
-			const statements = sqlContent
-				.split('--> statement-breakpoint')
-				.map((s) => s.trim())
-				.filter(Boolean);
-
-			for (const stmt of statements) {
-				await d1.prepare(stmt).run();
-			}
-		}
-
-		db = drizzle(d1, { schema });
+		proxy = await getPlatformProxy<Env>({ configPath: 'wrangler.jsonc', persist: false });
+		await applyMigrations(proxy.env.APP_DB);
+		db = drizzle(proxy.env.APP_DB, { schema });
 		walletsRepo = new WalletsRepo(db);
 		categoriesRepo = new CategoriesRepo(db);
 		transactionsRepo = new TransactionsRepo(db);
@@ -74,9 +59,7 @@ describe('Tenant Isolation Tests (D1 Integration)', () => {
 	});
 
 	afterAll(async () => {
-		if (mf) {
-			await mf.dispose();
-		}
+		await proxy?.dispose();
 	});
 
 	it('isolates wallets between users', async () => {
@@ -154,7 +137,10 @@ describe('Tenant Isolation Tests (D1 Integration)', () => {
 		expect(bobFetch).toBeNull();
 
 		// Bob cannot update Alice's transaction (returns null, Alice's data unchanged)
-		const bobUpdate = await transactionsRepo.update(userB, aliceTx.id, { amount: 10_000, note: 'Hacked note' });
+		const bobUpdate = await transactionsRepo.update(userB, aliceTx.id, {
+			amount: 10_000,
+			note: 'Hacked note'
+		});
 		expect(bobUpdate).toBeNull();
 
 		// Bob cannot delete Alice's transaction (returns false, Alice's data intact)
@@ -223,16 +209,15 @@ describe('Tenant Isolation Tests (D1 Integration)', () => {
 		const aliceWallet = await walletsRepo.create(userA, {
 			name: 'Alice Source',
 			type: 'bank',
-			initialBalance: 300_000
+			initialBalance: 1_000_000
 		});
-
 		const bobWallet = await walletsRepo.create(userB, {
-			name: 'Bob Target',
-			type: 'bank',
+			name: 'Bob Destination',
+			type: 'cash',
 			initialBalance: 100_000
 		});
 
-		// Alice tries to transfer to Bob's wallet using transfer repo
+		// Alice tries to transfer to Bob's wallet using the transfer repo
 		await expect(
 			transactionsRepo.transfer(userA, {
 				sourceWalletId: aliceWallet.id,
@@ -240,5 +225,40 @@ describe('Tenant Isolation Tests (D1 Integration)', () => {
 				amount: 50_000
 			})
 		).rejects.toThrow('Target wallet not found');
+	});
+
+	it("does not mutate another user's balances when a transaction points at their wallet", async () => {
+		const aliceWallet = await walletsRepo.create(userA, {
+			name: 'Alice Balance Vault',
+			type: 'bank',
+			initialBalance: 1_000_000
+		});
+		const aliceCat = await categoriesRepo.create(userA, {
+			name: 'Alice Groceries',
+			kind: 'expense'
+		});
+
+		const before = await walletsRepo.getById(userA, aliceWallet.id);
+		expect(before?.balance).toBe(1_000_000);
+
+		// Bob inserts a transaction that (deliberately) points at Alice's wallet
+		// and category. The wallet-mutating trigger is user-scoped, so it must not
+		// touch Alice's current_balance.
+		const crossTx = await transactionsRepo.create(userB, {
+			walletId: aliceWallet.id,
+			categoryId: aliceCat.id,
+			type: 'expense',
+			amount: 250_000,
+			note: 'cross-tenant'
+		});
+
+		const afterInsert = await walletsRepo.getById(userA, aliceWallet.id);
+		expect(afterInsert?.balance).toBe(1_000_000);
+
+		// Soft-deleting Bob's cross-tenant row must not re-credit Alice either.
+		expect(await transactionsRepo.delete(userB, crossTx.id)).toBe(true);
+
+		const afterDelete = await walletsRepo.getById(userA, aliceWallet.id);
+		expect(afterDelete?.balance).toBe(1_000_000);
 	});
 });

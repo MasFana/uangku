@@ -43,7 +43,7 @@ event.locals.env = env;
 
 `workerEnv` is `import { env } from 'cloudflare:workers'`, which `@sveltejs/adapter-cloudflare` 8 provides in dev and production. `event.platform.env` is kept as the first choice because the dev server fills it through `platformProxy`, but on this adapter it is `undefined` in production (see `docs/DECISIONS.md`, "Akses binding di produksi"). Route handlers that need a binding read `event.locals.env`.
 
-Bindings: `APP_DB` (D1). The `CACHE` (KV) binding is still declared in `wrangler.jsonc` but nothing reads it since the dashboard cache was removed. A `RECEIPTS` (R2) binding was removed while R2 is disabled on the original account; it comes back with the receipt upload feature.
+Bindings: `APP_DB` (D1). The `CACHE` (KV) binding was removed from `wrangler.jsonc` together with the dashboard cache it served; re-add the binding if a future server-side cache needs it. A `RECEIPTS` (R2) binding was removed while R2 is disabled on the original account; it comes back with the receipt upload feature.
 
 ## Data model
 
@@ -91,7 +91,7 @@ The transaction list reads the local transaction log from IndexedDB and filters 
 
 ## Sync
 
-Writes are optimistic. Every user mutation is applied to IndexedDB immediately and queued in an outbox; `src/lib/client/sync/engine.svelte.ts` pushes it in the background. The engine is single flight, bounds each cycle at 15 s, and backs off with jittered exponential delay. It triggers on `online`, `visibilitychange`, and `focus`, on a 30 s interval while the tab is visible, and on a service worker message. `/api/sync` is the only mutation endpoint: it validates payloads with Valibot, verifies ownership of referenced rows, rejects stale writes under HLC last-write-wins and reports the rejection, and advances the client cursor to `max(serverNow, max(delta watermark), clientCursor)`. The service worker precaches an app shell so a hard reload works offline; it never caches `private` or `no-store` responses such as `__data.json`.
+Writes are optimistic. Every user mutation is applied to IndexedDB immediately and queued in an outbox; `src/lib/client/sync/engine.svelte.ts` pushes it in the background. The engine is single flight, bounds each cycle at 15 s, and backs off with jittered exponential delay. It triggers on `online`, `visibilitychange`, and `focus`, on a 30 s interval while the tab is visible, and on a service worker message. `/api/sync` is the only mutation endpoint: it validates payloads with Valibot, verifies ownership of referenced rows, rejects stale writes under HLC last-write-wins and reports the rejection, and advances the client cursor to `max(serverNow, max(delta watermark), clientCursor)`. A rejected write converges to the server's version: the rejected entity id is persisted in `sync_meta.forceServerIds` (so an app restart between push and pull still converges), force-adopted from the next delta regardless of `hlc`, and the user is shown a visible conflict notice instead of a silent rollback. The service worker precaches an app shell so a hard reload works offline; it never caches `private` or `no-store` responses such as `__data.json`.
 
 ## Auth and the route guard
 

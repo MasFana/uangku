@@ -67,7 +67,7 @@ Larangan visual (dari skill antislop, tetap berlaku): gradien ungu-biru, kartu b
 
 ## Deploy produksi (Sprint 2)
 - Akun Cloudflare: satu akun kerja; nama dan id akun tidak ditulis di repo.
-- Resource dibuat 2026-11-12: D1 `APP_DB` (region APAC) dan KV `CACHE`. Kedua id ada di `uangku-app/wrangler.jsonc`; siapa pun yang memakai repo ini menggantinya dengan miliknya sendiri (`docs/development.md`).
+- Resource dibuat 2026-11-12: D1 `APP_DB` (region APAC) dan KV `CACHE`. Id D1 ada di `uangku-app/wrangler.jsonc`; siapa pun yang memakai repo ini menggantinya dengan miliknya sendiri (`docs/development.md`). KV `CACHE` dihapus dari konfigurasi saat cache dasbor server dihapus (dasbor dihitung di klien).
 - **R2 dinonaktifkan sementara** di `wrangler.jsonc`: `wrangler r2 bucket create` gagal dengan `code 10042 Please enable R2 through the Cloudflare Dashboard`. Binding `RECEIPTS` dan bucket `uangku-receipts` dinyalakan kembali saat F6 (upload struk) dikerjakan. Pemilik harus mengaktifkan R2 di dashboard dulu.
 - Secret wajib di produksi: `BETTER_AUTH_SECRET` (acak, ≥32 karakter), `BETTER_AUTH_URL=https://akularping.my.id`. Hostname `workers.dev` tetap bisa login karena `BETTER_AUTH_TRUSTED_ORIGINS` memuatnya. Secret `AI_*` belum diisi karena `.dev.vars` masih berisi placeholder dan fitur AI belum diimplementasikan.
 
@@ -142,3 +142,14 @@ Larangan visual (dari skill antislop, tetap berlaku): gradien ungu-biru, kartu b
 - FAB berarti **catat transaksi** dan tersedia di semua halaman: tombol `+` di nav tengah (ponsel, `aria-label="Catat transaksi"`) dan FAB mengambang `hidden md:flex fixed bottom-6 right-6` di desktop yang sebelumnya tidak punya jalan pintas sama sekali. Tombol "+ Transaksi" di header dan "+ Catat Transaksi" di halaman transaksi dihapus karena menjadi duplikat.
 - Dompet dan kategori **tidak** memakai FAB: aksinya jarang (sekali di awal), sementara FAB permanen menutupi konten setiap hari. Keduanya memakai tombol bertext lengkap di baris header halaman, sehingga pada layar dompet tombol `+` di nav (catat transaksi) dan "+ Tambah Dompet" tidak tampak identik.
 - `main` memakai `md:pb-28` supaya FAB mengambang tidak menutupi baris terakhir atau tombol "Muat Lebih Banyak".
+
+## Jam perangkat dan LWW
+
+- Pemenang konflik per baris ditentukan HLC, dan HLC dibangun dari jam perangkat. Perangkat yang jamnya maju (atau diset bertahun-tahun ke depan) menang selamanya; perangkat yang jamnya mundur selalu kalah. Itu bug, bukan risiko teoretis.
+- Klien memperbaiki **penyebabnya**: setiap respons `/api/sync` membawa `serverNow`, klien menghitung `offset = serverNow - (waktuKirim + rtt/2)` dan menyimpan sampel dengan RTT terkecil (estimator best-of-window). Stempel baru memakai `Date.now() + offset`, dan offset dipersist di `sync_meta.clockOffset` supaya restart offline tidak menghapus koreksinya.
+- Server membatasi **akibatnya**: stempel lebih dari 60 detik di depan jam server (`MAX_HLC_FUTURE_SKEW_MS`) dilipat **ke jam server** lewat `canonicalizeHLC` (counter dan node id dipertahankan). Baris tetap ditulis dan id-nya dikembalikan di `canonicalized[]`, bukan `rejected[]`, karena penulisannya diterapkan.
+- Target lipatan harus jam server, bukan batas toleransi. Smoke menemukan versi pertama (lipat ke `serverNow + 5 menit`) membuat baris tidak bisa diedit lagi selama 5 menit: setiap stempel baru kalah stale dibanding stempel masa depan baris itu sendiri.
+- `canonicalized[]` masuk jalur adopsi paksa yang sama dengan `rejected[]`. Tanpa itu, perbandingan HLC akan mempertahankan stempel klien yang lebih tinggi dan justru menciptakan divergensi permanen.
+- Ditolak: **menolak** stempel masa depan. Itu menghapus hasil edit pengguna hanya karena jam perangkatnya salah, dan untuk baris baru tidak ada versi server yang bisa diadopsi sehingga cursor tertahan selamanya.
+- Ditolak: memakai `server_updated_at` saja sebagai penentu urutan. Itu membuang urutan edit offline yang dibuat sebelum sinkron.
+- Batas 60 detik dipilih supaya drift normal (detik) tidak tersentuh, sementara jam yang jelas salah (menit sampai tahun) selalu dilipat.
