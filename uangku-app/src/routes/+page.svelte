@@ -1,23 +1,21 @@
 <script lang="ts">
 	import Card from '$lib/components/Card.svelte';
-	import Button from '$lib/components/Button.svelte';
 	import Badge from '$lib/components/Badge.svelte';
 	import EmptyState from '$lib/components/EmptyState.svelte';
 	import CashflowChart from '$lib/components/CashflowChart.svelte';
 	import { formatRupiah, formatDateIndo } from '$lib/utils';
-	import type { PageData } from './$types';
 	import { syncEngine } from '$lib/client/sync/engine.svelte';
+	import { deriveDashboard } from '$lib/client/derive';
 
-	let { data }: { data: PageData } = $props();
-
-	// Reactive derivation: use local engine data when present, falling back to server SSR data
-	const wallets = $derived(syncEngine.wallets.length > 0 ? syncEngine.wallets : (data.wallets ?? []));
-	const localTotalBalance = $derived(wallets.reduce((sum, w) => sum + w.currentBalance, 0));
-	const totalBalance = $derived(syncEngine.wallets.length > 0 ? localTotalBalance : (data.summary.totalBalance ?? 0));
-	const summary = $derived(data.summary);
+	// Whole dashboard renders from the local IndexedDB snapshot (no route load, no fetch).
+	const summary = $derived(
+		deriveDashboard(syncEngine.transactions, syncEngine.wallets, syncEngine.categories)
+	);
+	const wallets = $derived(summary.wallets);
+	const totalBalance = $derived(summary.totalBalance);
 	const hasWallets = $derived(wallets.length > 0);
-	const hasTransactions = $derived(summary.recentTransactions && summary.recentTransactions.length > 0);
-	const hasBreakdown = $derived(summary.categoryBreakdown && summary.categoryBreakdown.length > 0);
+	const hasTransactions = $derived(summary.recentTransactions.length > 0);
+	const hasBreakdown = $derived(summary.categoryBreakdown.length > 0);
 
 	const totalExpense = $derived(
 		summary.categoryBreakdown.reduce((sum, c) => sum + c.total, 0)
@@ -33,6 +31,18 @@
 </svelte:head>
 
 <div class="space-y-3">
+	{#if !syncEngine.ready}
+		<div class="space-y-3" aria-busy="true" aria-live="polite">
+			<span class="sr-only">Memuat data tersimpan…</span>
+			<div class="h-28 rounded-lg border-2 border-border bg-surface-muted animate-pulse"></div>
+			<div class="h-44 rounded-lg border-2 border-border bg-surface-muted animate-pulse"></div>
+			<div class="grid grid-cols-1 lg:grid-cols-3 gap-3">
+				<div class="h-32 rounded-lg border-2 border-border bg-surface-muted animate-pulse"></div>
+				<div class="lg:col-span-2 h-32 rounded-lg border-2 border-border bg-surface-muted animate-pulse"></div>
+			</div>
+			<div class="h-24 rounded-lg border-2 border-border bg-surface-muted animate-pulse"></div>
+		</div>
+	{:else}
 	<!-- Hero: Total Saldo Bersih -->
 	<Card variant="brand" shadow="lg" class="p-3.5 sm:p-4">
 		<div class="flex items-center justify-between gap-3">
@@ -220,4 +230,5 @@
 			</div>
 		{/if}
 	</section>
+	{/if}
 </div>

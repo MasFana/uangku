@@ -2,7 +2,6 @@ import {
 	openLedgerDB,
 	idbGetAll,
 	idbGet,
-	idbPut,
 	idbDelete,
 	type OutboxRecord,
 	type PendingBlobRecord
@@ -15,51 +14,203 @@ import type {
 	SyncRequestPayload,
 	SyncResponsePayload
 } from '$lib/shared/sync-contract';
-import { createHLCState, nowHLC, receiveHLC, compareHLC, type HLCState } from '$lib/shared/hlc';
+import { createHLCState, type HLCState } from '$lib/shared/hlc';
+import { version } from '$app/env';
+import {
+	mergeDelta,
+	parseForceServerIds,
+	planForceServerIds,
+	rejectionNotice,
+	clockOffsetFrom,
+	pickClockSample,
+	type ClockSample,
+	type LocalState
+} from './merge';
+import {
+	shouldResetCursor,
+	APP_VERSION_META_KEY,
+	CURSOR_META_KEY
+} from './cursor-reset';
 import { LocalLedger } from '../db/local-ledger';
+import { SyncCoordinator, type SyncStatus } from './backoff';
 
-export type SyncStatus = 'idle' | 'syncing' | 'offline' | 'auth_required';
+export type { SyncStatus };
 
+/**
+ * Must match `SYNC_TAG` in `src/service-worker.ts` (owned by ServiceWorkerOffline):
+ * the worker registers `sync`/`periodicsync` for this tag and relays it to open
+ * tabs as a `{ type: 'uangku:sync' }` message. The worker never replays the
+ * outbox itself, so a closed tab only flushes on next open.
+ */
+const BACKGROUND_SYNC_TAG = 'uangku-outbox-sync';
+
+/**
+ * `sync_meta` key holding the JSON string array of entity ids the server rejected
+ * and whose server version the local row must still adopt (see `merge.ts`). It is
+ * persisted because a rejection is only actionable against a delta row that may
+ * arrive in a later cycle — an app restart (or an aborted cycle) between the push
+ * and that pull must not lose the pending correction.
+ */
+const FORCE_SERVER_IDS_META_KEY = 'forceServerIds';
+
+/**
+ * `sync_meta` key holding the learned server clock offset in ms (number). Persisted so
+ * an offline restart keeps stamping with the corrected clock instead of the device one.
+ */
+const CLOCK_OFFSET_META_KEY = 'clockOffset';
+
+/**
+ * Reactive (Svelte 5 runes) shell over the pure `SyncCoordinator`.
+ * This class only mirrors coordinator state into `$state` fields and performs
+ * the actual I/O of one cycle; all trigger/retry/timeout policy lives in
+ * `backoff.ts` so it stays testable without runes.
+ */
 class ReactiveSyncEngine {
 	wallets = $state<WalletDTO[]>([]);
 	categories = $state<CategoryDTO[]>([]);
 	transactions = $state<TransactionDTO[]>([]);
 	dashboardSummary = $state<DashboardSummaryDTO | null>(null);
-	syncStatus = $state<SyncStatus>('idle');
-	pendingCount = $state<number>(0);
+	/** True once the first local read has populated the reactive arrays. */
+	ready = $state(false);
+	status = $state<SyncStatus>('idle');
+	pendingCount = $state(0);
+	lastError = $state<string | null>(null);
+
+	/**
+	 * User-visible explanation of the last rejected push, e.g. "2 perubahan ditolak
+	 * server; versi server dipakai". Separate from `lastError` (cycle-level failures)
+	 * because a rejected write is still a successful cycle: this one survives until a
+	 * pull comes back without rejections.
+	 */
+	conflictNotice = $state<string | null>(null);
 
 	private db: IDBDatabase | null = null;
+	/** Ledger owner; the DB is opened per user, so this drives re-init on switch. */
+	private userId: string | null = null;
 	private hlcState: HLCState = createHLCState('client-' + Math.random().toString(36).slice(2, 8));
+	/** Winning clock sample so far; its offset mirrors `hlcState.clockOffsetMs`. */
+	private clockSample: ClockSample | null = null;
 	private bus: BroadcastChannel | null = null;
+	private coordinator: SyncCoordinator | null = null;
 	private isInitialized = false;
+	/** Bumped by every init/dispose so a slow open for a previous user is discarded. */
+	private initToken = 0;
+
+	private onVisibility = () => {
+		if (document.visibilityState === 'visible') void this.triggerSync();
+	};
+	private onFocus = () => {
+		void this.triggerSync();
+	};
+	private onOnline = () => {
+		void this.triggerSync();
+	};
+	private onServiceWorkerMessage = (event: MessageEvent) => {
+		if (event.data?.type === 'uangku:sync') void this.triggerSync();
+	};
 
 	async init(userId: string) {
-		if (this.isInitialized || typeof window === 'undefined') return;
+		if (typeof window === 'undefined') return;
+		// Same user already live: keep the open connection and its outbox.
+		if (this.isInitialized && this.userId === userId) return;
+		this.dispose();
+
+		this.userId = userId;
 		this.isInitialized = true;
+		const token = ++this.initToken;
 
 		try {
-			this.db = await openLedgerDB();
+			const db = await openLedgerDB(userId);
+			// A newer init/dispose landed while we were opening: drop this connection.
+			if (token !== this.initToken) {
+				db.close();
+				return;
+			}
+			this.db = db;
+			// Learned offset from the previous run, so an offline restart keeps stamping corrected.
+			await this.loadPersistedClockOffset();
 			this.bus = new BroadcastChannel('ledger_sync_bus');
 			this.bus.onmessage = (event) => {
 				if (event.data?.type === 'RELOAD_LOCAL_DATA') {
-					this.loadLocalData();
+					void this.reloadLocalData();
 				}
 			};
 
-			await this.loadLocalData();
-
-			window.addEventListener('online', () => {
-				this.triggerSync();
+			this.coordinator = new SyncCoordinator({
+				runCycle: (signal) => this.executeSyncCycle(signal),
+				readPendingCount: () => this.countOutbox(),
+				isOnline: () => typeof navigator === 'undefined' || navigator.onLine,
+				isVisible: () => typeof document === 'undefined' || document.visibilityState === 'visible',
+				acquireLock: (task) => this.withSyncLock(task),
+				onStatus: (status) => {
+					this.status = status;
+				},
+				onPendingCount: (count) => {
+					this.pendingCount = count;
+				},
+				onLastError: (message) => {
+					this.lastError = message;
+				}
 			});
 
-			// Trigger initial sync in background
-			this.triggerSync();
+			document.addEventListener('visibilitychange', this.onVisibility);
+			window.addEventListener('focus', this.onFocus);
+			window.addEventListener('online', this.onOnline);
+			if (typeof navigator !== 'undefined' && navigator.serviceWorker) {
+				navigator.serviceWorker.addEventListener('message', this.onServiceWorkerMessage);
+			}
+			// Before the first cycle can run: an app upgrade drops the pull cursor once.
+			await this.reconcileCursorWithAppVersion();
+
+			this.coordinator.startPeriodic();
+
+			await this.reloadLocalData();
+			// Single initial trigger; periodic/visibility/focus/online handle the rest.
+			void this.triggerSync();
 		} catch (err) {
 			console.warn('Sync engine init error:', err);
+			// Leave the engine re-init-able so a later run can retry the open.
+			if (token === this.initToken) {
+				this.isInitialized = false;
+				this.userId = null;
+			}
 		}
 	}
 
-	async loadLocalData() {
+	dispose() {
+		if (typeof window !== 'undefined') {
+			document.removeEventListener('visibilitychange', this.onVisibility);
+			window.removeEventListener('focus', this.onFocus);
+			window.removeEventListener('online', this.onOnline);
+		}
+		if (typeof navigator !== 'undefined' && navigator.serviceWorker) {
+			navigator.serviceWorker.removeEventListener('message', this.onServiceWorkerMessage);
+		}
+		this.coordinator?.dispose();
+		this.coordinator = null;
+		this.bus?.close();
+		this.bus = null;
+		// Drop the connection: the next init opens the (possibly different) user's DB.
+		this.db?.close();
+		this.db = null;
+		this.userId = null;
+		this.isInitialized = false;
+		this.initToken++;
+		this.ready = false;
+		this.status = 'idle';
+		this.wallets = [];
+		this.categories = [];
+		this.transactions = [];
+		this.dashboardSummary = null;
+		this.pendingCount = 0;
+		this.lastError = null;
+		this.conflictNotice = null;
+		// The next user's DB has its own offset; `init` loads it.
+		this.hlcState.clockOffsetMs = 0;
+		this.clockSample = null;
+	}
+
+	async reloadLocalData() {
 		if (!this.db) return;
 		const [wList, cList, txList, outboxItems] = await Promise.all([
 			idbGetAll<WalletDTO>(this.db, 'wallets'),
@@ -71,7 +222,9 @@ class ReactiveSyncEngine {
 		this.wallets = wList.filter((w) => !w.deletedAt);
 		this.categories = cList.filter((c) => !c.deletedAt);
 		this.transactions = txList.filter((t) => !t.deletedAt);
-		this.pendingCount = outboxItems.length;
+		// Keep the outbox depth honest after every enqueue/push/delete.
+		this.coordinator?.setPendingCount(outboxItems.length);
+		this.ready = true;
 	}
 
 	getLocalLedger(): LocalLedger | null {
@@ -79,80 +232,193 @@ class ReactiveSyncEngine {
 		return new LocalLedger(this.db, this.hlcState);
 	}
 
+	/** Idempotent + cheap: the coordinator coalesces and skips no-op cycles. */
 	async triggerSync(): Promise<void> {
-		if (!this.db || typeof navigator === 'undefined' || !navigator.onLine) {
-			this.syncStatus = 'offline';
-			return;
-		}
-
-		if (navigator.locks) {
-			await navigator.locks.request('pwa_ledger_sync_lock', { ifAvailable: true }, async (lock) => {
-				if (!lock) {
-					// Another tab is currently syncing
-					return;
-				}
-				await this.executeSyncCycle();
-			});
-		} else {
-			await this.executeSyncCycle();
-		}
+		await this.coordinator?.trigger();
 	}
 
-	private async executeSyncCycle(): Promise<void> {
-		if (!this.db) return;
-		this.syncStatus = 'syncing';
+	private countOutbox(): Promise<number> {
+		if (!this.db) return Promise.resolve(0);
+		const db = this.db;
+		return new Promise((resolve, reject) => {
+			const request = db.transaction('outbox', 'readonly').objectStore('outbox').count();
+			request.onsuccess = () => resolve(request.result);
+			request.onerror = () => reject(request.error);
+		});
+	}
 
+	/**
+	 * Cross-tab lock. The task is bounded by the coordinator's cycle timeout,
+	 * so a hung fetch can never hold the lock forever.
+	 */
+	private withSyncLock(task: () => Promise<void>): Promise<void> {
+		if (typeof navigator === 'undefined' || !navigator.locks) return task();
+		return navigator.locks.request('pwa_ledger_sync_lock', { ifAvailable: true }, async (lock) => {
+			if (!lock) return; // another tab is syncing; its cycle pushes our rows too
+			await task();
+		});
+	}
+
+	/** Bounded cycle wrapper: ask the worker for a background retry when work remains. */
+	private async executeSyncCycle(signal: AbortSignal): Promise<void> {
 		try {
-			// 1. Flush pending receipt blobs to R2
-			await this.flushPendingReceiptBlobs();
-
-			// 2. Read outbox mutations and cursor
-			const outboxItems = await idbGetAll<OutboxRecord>(this.db, 'outbox');
-			const cursorMeta = await idbGet<{ key: string; value: number }>(this.db, 'sync_meta', 'cursor');
-			const clientCursor = cursorMeta?.value || 0;
-
-			const payload: SyncRequestPayload = {
-				cursor: clientCursor,
-				mutations: outboxItems.map((item) => ({
-					entityId: item.entityId,
-					table: item.table,
-					op: item.op,
-					hlc: item.hlc,
-					payload: item.payload
-				}))
-			};
-
-			const res = await fetch('/api/sync', {
-				method: 'POST',
-				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify(payload)
-			});
-
-			if (res.status === 401) {
-				this.syncStatus = 'auth_required';
-				return;
-			}
-			if (!res.ok) {
-				throw new Error('Sync failed with status ' + res.status);
-			}
-
-			const data = (await res.json()) as SyncResponsePayload;
-
-			// 3. Commit results to IDB safely
-			await this.commitSyncResultToIDB(outboxItems, data);
-
-			// 4. Update reactive state & notify other tabs
-			await this.loadLocalData();
-			this.bus?.postMessage({ type: 'RELOAD_LOCAL_DATA' });
-
-			this.syncStatus = 'idle';
+			await this.runSyncCycle(signal);
+			if (this.pendingCount > 0) void this.requestBackgroundSync();
 		} catch (err) {
-			console.warn('Sync cycle failed:', err);
-			this.syncStatus = navigator.onLine ? 'idle' : 'offline';
+			// Failed/offline/aborted: let the OS retry from the worker even if this tab closes.
+			void this.requestBackgroundSync();
+			throw err;
 		}
 	}
 
-	private async flushPendingReceiptBlobs(): Promise<void> {
+	/** Best-effort `SyncManager.register`; never throws out of the cycle. */
+	private async requestBackgroundSync(): Promise<void> {
+		try {
+			if (typeof navigator === 'undefined' || !navigator.serviceWorker) return;
+			const reg = (await navigator.serviceWorker.ready) as ServiceWorkerRegistration & {
+				sync?: { register(tag: string): Promise<void> };
+			};
+			await reg.sync?.register(BACKGROUND_SYNC_TAG);
+		} catch {
+			// Unsupported browser or denied permission: the in-tab triggers still cover us.
+		}
+	}
+
+	/**
+	 * One-shot per init, before the first cycle: if a cursor exists and the app
+	 * version it was recorded under differs from the running one (or was never
+	 * recorded, i.e. a DB from before this check), drop the cursor so the next pull
+	 * re-delivers every row the cursor had already passed. The outbox is deliberately
+	 * untouched.
+	 *
+	 * Whole body is best-effort: a failed `sync_meta` read/write must never throw out
+	 * of `init` (the cursor simply stays as-is and the version is retried next init).
+	 */
+	private async reconcileCursorWithAppVersion(): Promise<void> {
+		const db = this.db;
+		if (!db) return;
+		try {
+			const [cursor, stored] = await Promise.all([
+				idbGet<{ key: string; value: number }>(db, 'sync_meta', CURSOR_META_KEY),
+				idbGet<{ key: string; value: string }>(db, 'sync_meta', APP_VERSION_META_KEY)
+			]);
+			// No cursor yet (fresh install) → nothing to reset; a cursor with no recorded
+			// version is a pre-upgrade-check DB and must re-pull in full.
+			if (!shouldResetCursor(cursor !== undefined, stored?.value, version)) return;
+			await idbDelete(db, 'sync_meta', CURSOR_META_KEY);
+			console.log(JSON.stringify({ event: 'sync_cursor_reset', from: stored?.value, to: version }));
+		} catch (err) {
+			console.warn('Sync cursor version check skipped:', err);
+		}
+	}
+
+	private async loadPersistedClockOffset(): Promise<void> {
+		const db = this.db;
+		if (!db) return;
+		try {
+			const stored = await idbGet<{ key: string; value: unknown }>(
+				db,
+				'sync_meta',
+				CLOCK_OFFSET_META_KEY
+			);
+			const offsetMs =
+				typeof stored?.value === 'number' && Number.isFinite(stored.value) ? stored.value : 0;
+			// Unknown RTT: the first freshly measured sample always wins over it.
+			this.applyClockSample({ offsetMs, rttMs: Infinity });
+		} catch {
+			this.applyClockSample({ offsetMs: 0, rttMs: Infinity });
+		}
+	}
+
+	/**
+	 * Mirror the winning sample into the shared HLC state — every later write stamps
+	 * with it. Rounded because a stamp is whole milliseconds.
+	 */
+	private applyClockSample(sample: ClockSample): void {
+		const offsetMs = Math.round(sample.offsetMs);
+		this.clockSample = { offsetMs, rttMs: sample.rttMs };
+		this.hlcState.clockOffsetMs = offsetMs;
+	}
+
+	private async runSyncCycle(signal: AbortSignal): Promise<void> {
+		if (!this.db) return;
+
+		// 1. Flush pending receipt blobs to R2
+		await this.flushPendingReceiptBlobs(signal);
+
+		// 2. Read outbox mutations, cursor, and the forced-adoption set left by an
+		// earlier rejected push.
+		const outboxItems = await idbGetAll<OutboxRecord>(this.db, 'outbox');
+		const cursorMeta = await idbGet<{ key: string; value: number }>(this.db, 'sync_meta', 'cursor');
+		const clientCursor = cursorMeta?.value || 0;
+		const forcedMeta = await idbGet<{ key: string; value: string }>(
+			this.db,
+			'sync_meta',
+			FORCE_SERVER_IDS_META_KEY
+		);
+		const forcedIds = new Set(parseForceServerIds(forcedMeta?.value));
+
+		const payload: SyncRequestPayload = {
+			cursor: clientCursor,
+			mutations: outboxItems.map((item) => ({
+				entityId: item.entityId,
+				table: item.table,
+				op: item.op,
+				hlc: item.hlc,
+				payload: item.payload
+			}))
+		};
+
+		// Sent-at and RTT around the request: with the response's `serverNow` they give one
+		// clock-offset sample (see `clockOffsetFrom`).
+		const sentAtMs = Date.now();
+		const requestStartedAt = performance.now();
+		const res = await fetch('/api/sync', {
+			method: 'POST',
+			headers: { 'Content-Type': 'application/json' },
+			body: JSON.stringify(payload),
+			signal
+		});
+
+		if (res.status === 401) {
+			throw new Error('Sesi berakhir — masuk kembali untuk menyinkronkan.');
+		}
+		if (!res.ok) {
+			throw new Error('Sync failed with status ' + res.status);
+		}
+
+		const data = (await res.json()) as SyncResponsePayload;
+		const rttMs = performance.now() - requestStartedAt;
+
+		// 3. Learn the server clock offset BEFORE the commit below, so the next local write
+		// already stamps with the corrected clock instead of the device's. Best-of-window:
+		// only a smaller round trip replaces the current sample.
+		const sample = pickClockSample(this.clockSample, {
+			offsetMs: clockOffsetFrom(data.serverNow, sentAtMs, rttMs),
+			rttMs
+		});
+		this.applyClockSample(sample);
+
+		// A clamped (`canonicalized`) row exists server-side with the server's hlc: adopt it
+		// outright this cycle, else local LWW keeps our higher stamp and both sides diverge.
+		const canonicalizedIds = data.canonicalized.map((entry) => entry.entityId);
+		const forceForMerge = new Set(forcedIds);
+		for (const id of canonicalizedIds) if (id) forceForMerge.add(id);
+
+		// 4. Commit results to IDB safely
+		await this.commitSyncResultToIDB(outboxItems, data, forceForMerge, clientCursor);
+
+		// 5. Surface rejections and clamps as their own field: a rejected write is still a
+		// successful cycle, so `lastError` (cycle failures only) stays untouched and this
+		// notice lives until a pull comes back with neither.
+		this.conflictNotice = rejectionNotice([...data.rejected, ...data.canonicalized]);
+
+		// 6. Update reactive state & notify other tabs
+		await this.reloadLocalData();
+		this.bus?.postMessage({ type: 'RELOAD_LOCAL_DATA' });
+	}
+
+	private async flushPendingReceiptBlobs(signal: AbortSignal): Promise<void> {
 		if (!this.db) return;
 		const blobs = await idbGetAll<PendingBlobRecord>(this.db, 'pending_blobs');
 		for (const item of blobs) {
@@ -163,20 +429,25 @@ class ReactiveSyncEngine {
 
 				const res = await fetch('/api/receipts/upload', {
 					method: 'POST',
-					body: formData
+					body: formData,
+					signal
 				});
 				if (res.ok) {
 					await idbDelete(this.db, 'pending_blobs', item.id);
 				}
 			} catch {
-				// Retry on next cycle
+				// Aborted or failed: retry on next cycle
 			}
 		}
 	}
 
 	private async commitSyncResultToIDB(
 		sentMutations: OutboxRecord[],
-		response: SyncResponsePayload
+		response: SyncResponsePayload,
+		/** Ids whose server version must win outright (rejections and clamps). */
+		forcedIds: ReadonlySet<string>,
+		/** The cursor the server just pulled against: 0 means this delta was already full. */
+		clientCursor: number
 	): Promise<void> {
 		if (!this.db) return;
 
@@ -201,46 +472,87 @@ class ReactiveSyncEngine {
 			};
 		}
 
-		// B. Apply delta wallets
-		for (const w of response.delta.wallets) {
-			const localReq = walletStore.get(w.id);
-			localReq.onsuccess = () => {
-				const local: WalletDTO | undefined = localReq.result;
-				if (!local || compareHLC(w.hlc, local.hlc) > 0) {
-					walletStore.put(w);
-				}
-			};
+		// B. Read the local rows inside THIS transaction, so a concurrent local write
+		// cannot slip between the HLC compare and the put (no lost update window).
+		let mergedState: LocalState | null = null;
+		const txDone = Promise.withResolvers<LocalState | null>();
+		const walletReq = walletStore.getAll();
+		const categoryReq = categoryStore.getAll();
+		const txReq = txStore.getAll();
+		let pendingReads = 3;
+		const applyDeltaWhenLoaded = () => {
+			if (--pendingReads > 0) return;
+			const { merged, changedIds, adoptedForceIds } = mergeDelta(
+				{
+					wallets: walletReq.result as WalletDTO[],
+					categories: categoryReq.result as CategoryDTO[],
+					transactions: txReq.result as TransactionDTO[]
+				},
+				response.delta,
+				forcedIds
+			);
+			mergedState = merged;
+			const changedWallets = new Set<string>();
+			const changedCategories = new Set<string>();
+			const changedTransactions = new Set<string>();
+			for (const changed of changedIds) {
+				if (changed.table === 'wallets') changedWallets.add(changed.id);
+				else if (changed.table === 'categories') changedCategories.add(changed.id);
+				else changedTransactions.add(changed.id);
+			}
+			for (const w of merged.wallets) if (changedWallets.has(w.id)) walletStore.put(w);
+			for (const c of merged.categories) if (changedCategories.has(c.id)) categoryStore.put(c);
+			for (const t of merged.transactions) if (changedTransactions.has(t.id)) txStore.put(t);
+
+			// C. Cursor, app version, and the force set — all in this transaction, so an
+			// aborted/failed cycle leaves the previous persisted values intact and the
+			// correction is simply retried. Writes are issued here, not before the row
+			// reads above, because the cursor depends on what the merge actually adopted.
+			const plan = planForceServerIds(
+				[...forcedIds],
+				adoptedForceIds,
+				// Rejected and clamped ids alike need the server row adopted; a clamped row
+				// already exists server-side under the server's hlc.
+				[...response.rejected, ...response.canonicalized].map((entry) => entry.entityId),
+				clientCursor
+			);
+			// Persisted in the same transaction, so the learned offset survives a restart
+			// only when the cycle actually committed.
+			metaStore.put({ key: CLOCK_OFFSET_META_KEY, value: this.hlcState.clockOffsetMs });
+			if (plan.persist.length > 0) {
+				metaStore.put({ key: FORCE_SERVER_IDS_META_KEY, value: JSON.stringify(plan.persist) });
+			} else {
+				metaStore.delete(FORCE_SERVER_IDS_META_KEY);
+			}
+			if (plan.resetCursor) {
+				// The server row we must adopt sits at or below the cursor and would never
+				// be re-delivered: drop the cursor so the next pull is a full delta.
+				metaStore.delete(CURSOR_META_KEY);
+			} else {
+				// `APP_VERSION_META_KEY` only now that a full cycle succeeded — an upgrade
+				// that never syncs keeps its cursor reset pending.
+				metaStore.put({ key: CURSOR_META_KEY, value: response.newCursor });
+				metaStore.put({ key: APP_VERSION_META_KEY, value: version });
+			}
+		};
+		walletReq.onsuccess = applyDeltaWhenLoaded;
+		categoryReq.onsuccess = applyDeltaWhenLoaded;
+		txReq.onsuccess = applyDeltaWhenLoaded;
+
+		// The cursor/app-version/force-set writes are step C inside `applyDeltaWhenLoaded`:
+		// they depend on what the merge adopted, and issuing them here would queue them
+		// before those row reads resolved.
+
+		tx.oncomplete = () => txDone.resolve(mergedState);
+		tx.onerror = () => txDone.reject(tx.error);
+
+		// D. Reactive arrays are filtered views of the same merge result (single code path).
+		const merged = await txDone.promise;
+		if (merged) {
+			this.wallets = merged.wallets.filter((w) => !w.deletedAt);
+			this.categories = merged.categories.filter((c) => !c.deletedAt);
+			this.transactions = merged.transactions.filter((t) => !t.deletedAt);
 		}
-
-		// C. Apply delta categories
-		for (const c of response.delta.categories) {
-			const localReq = categoryStore.get(c.id);
-			localReq.onsuccess = () => {
-				const local: CategoryDTO | undefined = localReq.result;
-				if (!local || compareHLC(c.hlc, local.hlc) > 0) {
-					categoryStore.put(c);
-				}
-			};
-		}
-
-		// D. Apply delta transactions
-		for (const t of response.delta.transactions) {
-			const localReq = txStore.get(t.id);
-			localReq.onsuccess = () => {
-				const local: TransactionDTO | undefined = localReq.result;
-				if (!local || compareHLC(t.hlc, local.hlc) > 0) {
-					txStore.put(t);
-				}
-			};
-		}
-
-		// E. Update cursor
-		metaStore.put({ key: 'cursor', value: response.newCursor });
-
-		return new Promise((resolve, reject) => {
-			tx.oncomplete = () => resolve();
-			tx.onerror = () => reject(tx.error);
-		});
 	}
 }
 

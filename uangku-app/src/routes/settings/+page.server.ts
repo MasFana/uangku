@@ -1,12 +1,8 @@
-import type { PageServerLoad, Actions } from './$types';
+import type { Actions } from './$types';
 import { redirect } from '@sveltejs/kit';
 
-export const load: PageServerLoad = async (event) => {
-	return {
-		user: event.locals.user || null
-	};
-};
-
+// No `load`: the account is delivered by `+layout.server.ts`, so navigating here costs
+// zero data requests. Only the logout action needs the server.
 export const actions: Actions = {
 	logout: async (event) => {
 		if (event.locals.auth) {

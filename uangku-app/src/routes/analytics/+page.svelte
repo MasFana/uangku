@@ -5,21 +5,51 @@
 	import CashflowChart from '$lib/components/CashflowChart.svelte';
 	import * as Dialog from '$lib/components/ui/dialog/index.js';
 	import { formatRupiah } from '$lib/utils';
-	import type { PageData } from './$types';
-
-	let { data }: { data: PageData } = $props();
+	import { page } from '$app/state';
+	import { goto } from '$app/navigation';
+	import { syncEngine } from '$lib/client/sync/engine.svelte';
+	import { deriveAnalytics } from '$lib/client/derive';
 
 	let showFilterSheet = $state(false);
 
-	const filters = $derived(data.filters);
-	const summary = $derived(data.summary);
-	const series = $derived(data.series ?? []);
-	const categories = $derived(data.categories ?? []);
-	const wallets = $derived(data.wallets ?? []);
-	const previous = $derived(data.previous);
-	const options = $derived(data.options ?? { wallets: [], categories: [] });
+	// Filters live in the URL only (deep-linkable). This route has no `load`, so a filter
+	// change re-derives locally and issues no request.
+	const result = $derived(
+		deriveAnalytics(syncEngine.transactions, syncEngine.wallets, syncEngine.categories, {
+			range: page.url.searchParams.get('range'),
+			from: page.url.searchParams.get('from'),
+			to: page.url.searchParams.get('to'),
+			granularity: page.url.searchParams.get('granularity'),
+			walletId: page.url.searchParams.get('walletId'),
+			categoryId: page.url.searchParams.get('categoryId'),
+			type: page.url.searchParams.get('type')
+		})
+	);
+
+	const filters = $derived(result.filters);
+	const summary = $derived(result.summary);
+	const series = $derived(result.series);
+	const categories = $derived(result.categories);
+	const wallets = $derived(result.wallets);
+	const previous = $derived(result.previous);
+	const options = $derived(result.options);
 
 	const hasData = $derived(summary.count > 0);
+
+	/** Writes one filter into the URL; `null`/'' removes it. */
+	function applyFilter(key: string, value: string | null) {
+		const params = new URLSearchParams(page.url.search);
+		if (value) params.set(key, value);
+		else params.delete(key);
+		// `from`/`to` only mean anything for a custom range.
+		if (key === 'range' && value !== 'custom') {
+			params.delete('from');
+			params.delete('to');
+		}
+		const q = params.toString();
+		// Shallow: same page, no `load` exists here, so this issues no request.
+		void goto(q ? `/analytics?${q}` : '/analytics', { shallow: true, reset: false });
+	}
 
 	// Label rentang aktif
 	const rangeLabels: Record<string, string> = {
@@ -46,15 +76,6 @@
 		return count;
 	});
 
-	// Adapt series to CashflowChart expected structure { month: string, income: number, expense: number }
-	const chartData = $derived(
-		series.map((s: { label?: string; bucket?: string; income: number; expense: number }) => ({
-			month: s.label || s.bucket || '',
-			income: s.income,
-			expense: s.expense
-		}))
-	);
-
 	// Difference calculation vs previous period
 	const netDiff = $derived.by(() => {
 		if (!previous) return null;
@@ -74,6 +95,24 @@
 <div class="space-y-4">
 	<h1 class="sr-only">Analisis & Laporan</h1>
 
+	{#if !syncEngine.ready}
+		<div class="space-y-3" aria-busy="true" aria-live="polite">
+			<span class="sr-only">Memuat data tersimpan…</span>
+			<div class="h-14 rounded-lg border-2 border-border bg-surface-muted animate-pulse"></div>
+			<div class="grid grid-cols-2 gap-3 sm:gap-4">
+				<div class="h-24 rounded-lg border-2 border-border bg-surface-muted animate-pulse"></div>
+				<div class="h-24 rounded-lg border-2 border-border bg-surface-muted animate-pulse"></div>
+				<div class="h-24 rounded-lg border-2 border-border bg-surface-muted animate-pulse"></div>
+				<div class="h-24 rounded-lg border-2 border-border bg-surface-muted animate-pulse"></div>
+				<div class="h-24 rounded-lg border-2 border-border bg-surface-muted animate-pulse"></div>
+				<div class="h-24 rounded-lg border-2 border-border bg-surface-muted animate-pulse"></div>
+			</div>
+			<div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+				<div class="h-56 rounded-lg border-2 border-border bg-surface-muted animate-pulse"></div>
+				<div class="h-56 rounded-lg border-2 border-border bg-surface-muted animate-pulse"></div>
+			</div>
+		</div>
+	{:else}
 	<!-- Baris Kontrol Filter Ringkas -->
 	<Card class="p-2 sm:p-2.5">
 		<div class="flex items-center justify-between gap-2">
@@ -188,7 +227,7 @@
 						{filters.granularity === 'month' ? 'Bulanan' : filters.granularity === 'week' ? 'Mingguan' : 'Harian'}
 					</span>
 				</div>
-				<CashflowChart data={chartData} height={160} />
+				<CashflowChart data={series} height={160} />
 			</Card>
 
 			<!-- Komposisi per Kategori -->
@@ -263,13 +302,14 @@
 				<Dialog.Title class="text-lg font-black text-content">Filter Analisis</Dialog.Title>
 			</Dialog.Header>
 
-			<form method="GET" action="/analytics" class="space-y-4">
+			<div class="space-y-4">
 				<div class="space-y-1.5">
 					<label for="sheet-analytics-range" class="block text-sm font-bold text-content">Rentang Waktu</label>
 					<select
 						id="sheet-analytics-range"
 						name="range"
 						value={filters.range || 'month'}
+						onchange={(e) => applyFilter('range', e.currentTarget.value)}
 						class="w-full min-h-[44px] px-3 py-2 text-sm font-bold rounded-md border-2 border-border bg-surface text-content shadow-hard-xs"
 					>
 						<option value="week">Minggu Ini</option>
@@ -289,6 +329,7 @@
 								id="from"
 								name="from"
 								value={filters.from || ''}
+								onchange={(e) => applyFilter('from', e.currentTarget.value)}
 								class="w-full min-h-[44px] px-3 py-2 text-sm font-mono rounded-md border-2 border-border bg-surface text-content shadow-hard-xs"
 							/>
 						</div>
@@ -299,6 +340,7 @@
 								id="to"
 								name="to"
 								value={filters.to || ''}
+								onchange={(e) => applyFilter('to', e.currentTarget.value)}
 								class="w-full min-h-[44px] px-3 py-2 text-sm font-mono rounded-md border-2 border-border bg-surface text-content shadow-hard-xs"
 							/>
 						</div>
@@ -311,6 +353,7 @@
 						id="granularity"
 						name="granularity"
 						value={filters.granularity || 'day'}
+						onchange={(e) => applyFilter('granularity', e.currentTarget.value)}
 						class="w-full min-h-[44px] px-3 py-2 text-sm font-bold rounded-md border-2 border-border bg-surface text-content shadow-hard-xs"
 					>
 						<option value="day">Harian</option>
@@ -325,6 +368,7 @@
 						id="type"
 						name="type"
 						value={filters.type || 'all'}
+						onchange={(e) => applyFilter('type', e.currentTarget.value)}
 						class="w-full min-h-[44px] px-3 py-2 text-sm font-bold rounded-md border-2 border-border bg-surface text-content shadow-hard-xs"
 					>
 						<option value="all">Semua Jenis</option>
@@ -339,6 +383,7 @@
 						id="walletId"
 						name="walletId"
 						value={filters.walletId || ''}
+						onchange={(e) => applyFilter('walletId', e.currentTarget.value)}
 						class="w-full min-h-[44px] px-3 py-2 text-sm font-bold rounded-md border-2 border-border bg-surface text-content shadow-hard-xs"
 					>
 						<option value="">Semua Dompet</option>
@@ -354,6 +399,7 @@
 						id="categoryId"
 						name="categoryId"
 						value={filters.categoryId || ''}
+						onchange={(e) => applyFilter('categoryId', e.currentTarget.value)}
 						class="w-full min-h-[44px] px-3 py-2 text-sm font-bold rounded-md border-2 border-border bg-surface text-content shadow-hard-xs"
 					>
 						<option value="">Semua Kategori</option>
@@ -370,11 +416,17 @@
 					>
 						Reset
 					</a>
-					<Button type="submit" variant="primary" class="min-h-[44px]">
-						Terapkan Filter
+					<Button
+						type="button"
+						variant="primary"
+						class="min-h-[44px]"
+						onclick={() => (showFilterSheet = false)}
+					>
+						Selesai
 					</Button>
 				</div>
-			</form>
+			</div>
 		</Dialog.Content>
 	</Dialog.Root>
+	{/if}
 </div>

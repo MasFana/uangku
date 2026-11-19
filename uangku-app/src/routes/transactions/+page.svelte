@@ -9,10 +9,12 @@
 	import { formatRupiah, formatDateIndo } from '$lib/utils';
 	import { page } from '$app/state';
 	import { goto } from '$app/navigation';
-	import type { PageData, ActionData } from './$types';
 	import { syncEngine } from '$lib/client/sync/engine.svelte';
+	import { deriveWalletBalances } from '$lib/client/derive/balances';
+	import { filterTransactions, resolvePeriodBounds } from '$lib/client/derive/filters';
+	import type { TransactionDTO } from '$lib/shared/sync-contract';
 
-	let { data, form }: { data: PageData & { user?: { id: string } | null }; form: ActionData } = $props();
+	// Rendered entirely from IndexedDB via the frozen sync engine — no server load.
 
 	// Modal / form states
 	let showCreateModal = $state(page.url.searchParams.get('new') === '1');
@@ -20,37 +22,153 @@
 	let transactionKind = $state<'expense' | 'income' | 'transfer'>('expense');
 	let editingTransaction = $state<any | null>(null);
 
-	// Zero-reload optimistic submission handler
-	async function handleOptimisticSubmit(e: SubmitEvent) {
-		const ledger = syncEngine.getLocalLedger();
-		if (!ledger || !data.user?.id) return; // Fall back to default HTML form POST
+	// ---- URL-backed filter state (deep-linkable, no server load) ----
+	const urlParams = $derived(page.url.searchParams);
+	const filter = $derived({
+		period: urlParams.get('period'),
+		startDate: urlParams.get('startDate'),
+		endDate: urlParams.get('endDate'),
+		type: sanitizeType(urlParams.get('type')),
+		walletId: urlParams.get('walletId'),
+		categoryId: urlParams.get('categoryId'),
+		search: urlParams.get('search')
+	});
+	const pageNum = $derived(Math.max(parseInt(urlParams.get('page') || '1', 10) || 1, 1));
+	const pageSize = $derived(
+		Math.min(Math.max(parseInt(urlParams.get('pageSize') || '20', 10) || 20, 1), 100)
+	);
 
+	function sanitizeType(value: string | null): 'income' | 'expense' | 'transfer' | null {
+		return value === 'income' || value === 'expense' || value === 'transfer' ? value : null;
+	}
+
+	const userId = $derived(page.data.user?.id ?? null);
+	const canWrite = $derived(syncEngine.ready && syncEngine.getLocalLedger() !== null);
+
+	let errorMessage = $state<string | null>(null);
+
+	// <input type="date"> yields YYYY-MM-DD; the ledger stores ISO UTC midnight.
+	const occurredAtFrom = (date: string): string =>
+		/^\d{4}-\d{2}-\d{2}$/.test(date) ? `${date}T00:00:00.000Z` : date;
+
+	async function refresh() {
+		await syncEngine.reloadLocalData();
+		void syncEngine.triggerSync();
+	}
+
+	async function handleCreate(e: SubmitEvent) {
 		e.preventDefault();
+		const ledger = syncEngine.getLocalLedger();
+		const uid = userId;
+		if (!ledger || !uid) return;
 		const formEl = e.currentTarget as HTMLFormElement;
-		const formData = new FormData(formEl);
+		const fd = new FormData(formEl);
+		const amount = Math.trunc(Math.abs(parseInt(String(fd.get('amount') ?? '0'), 10) || 0));
+		const date = String(fd.get('date') ?? '') || new Date().toISOString().slice(0, 10);
+		const note = String(fd.get('note') ?? '').trim() || null;
+		const occurredAt = occurredAtFrom(date);
+		try {
+			if (transactionKind === 'transfer') {
+				const walletId = String(fd.get('fromWalletId') ?? '');
+				const transferWalletId = String(fd.get('toWalletId') ?? '');
+				if (!walletId || !transferWalletId || !amount) return;
+				await ledger.createTransaction(uid, {
+					walletId,
+					transferWalletId,
+					type: 'transfer',
+					amount,
+					note,
+					occurredAt
+				});
+			} else {
+				const walletId = String(fd.get('walletId') ?? '');
+				const categoryId = String(fd.get('categoryId') ?? '') || null;
+				if (!walletId || !amount) return;
+				await ledger.createTransaction(uid, {
+					walletId,
+					categoryId,
+					type: transactionKind,
+					amount,
+					note,
+					occurredAt
+				});
+			}
+			errorMessage = null;
+			showCreateModal = false;
+			formEl.reset();
+			await refresh();
+		} catch (err) {
+			errorMessage = err instanceof Error ? err.message : 'Gagal mencatat transaksi';
+		}
+	}
 
-		const walletId = formData.get('walletId') as string;
-		const categoryId = (formData.get('categoryId') as string) || null;
-		const amount = Math.abs(parseInt((formData.get('amount') as string) || '0', 10));
-		const transferWalletId = (formData.get('transferWalletId') as string) || null;
-		const note = (formData.get('note') as string) || null;
-		const occurredAt = (formData.get('occurredAt') as string) || new Date().toISOString();
+	async function handleUpdate(e: SubmitEvent) {
+		e.preventDefault();
+		const ledger = syncEngine.getLocalLedger();
+		const uid = userId;
+		const tx = editingTransaction as TransactionDTO | null;
+		if (!ledger || !uid || !tx) return;
+		const fd = new FormData(e.currentTarget as HTMLFormElement);
+		const amount = Math.trunc(Math.abs(parseInt(String(fd.get('amount') ?? '0'), 10) || 0));
+		const date = String(fd.get('date') ?? '') || tx.occurredAt.slice(0, 10);
+		const note = String(fd.get('note') ?? '').trim() || null;
+		try {
+			await ledger.updateTransaction(uid, tx.id, {
+				walletId: String(fd.get('walletId') ?? '') || tx.walletId,
+				categoryId: String(fd.get('categoryId') ?? '') || null,
+				amount,
+				note,
+				occurredAt: occurredAtFrom(date)
+			});
+			errorMessage = null;
+			editingTransaction = null;
+			await refresh();
+		} catch (err) {
+			errorMessage = err instanceof Error ? err.message : 'Gagal memperbarui transaksi';
+		}
+	}
 
-		if (!walletId || !amount) return;
+	async function handleDelete(tx: TransactionDTO) {
+		if (!confirm('Hapus transaksi ini? Saldo dompet akan disesuaikan kembali.')) return;
+		const ledger = syncEngine.getLocalLedger();
+		const uid = userId;
+		if (!ledger || !uid) return;
+		try {
+			await ledger.deleteTransaction(uid, tx.id);
+			errorMessage = null;
+			await refresh();
+		} catch (err) {
+			errorMessage = err instanceof Error ? err.message : 'Gagal menghapus transaksi';
+		}
+	}
 
-		await ledger.createTransaction(data.user.id, {
-			walletId,
-			categoryId,
-			type: transactionKind,
-			amount,
-			transferWalletId,
-			note,
-			occurredAt
+	function applyFilters(e: SubmitEvent) {
+		e.preventDefault();
+		const fd = new FormData(e.currentTarget as HTMLFormElement);
+		const params = new URLSearchParams();
+		for (const key of ['period', 'type', 'walletId', 'categoryId', 'startDate', 'endDate']) {
+			const value = String(fd.get(key) ?? '').trim();
+			if (value) params.set(key, value);
+		}
+		showFilterSheet = false;
+		goto(params.toString() ? `/transactions?${params}` : '/transactions', {
+			shallow: true,
+			reset: false
 		});
+	}
 
-		showCreateModal = false;
-		formEl.reset();
-		syncEngine.triggerSync();
+	function handleCreateOpenChange(open: boolean) {
+		showCreateModal = open;
+		if (!open && page.url.searchParams.get('new') === '1') {
+			const params = new URLSearchParams(page.url.searchParams.toString());
+			params.delete('new');
+			const q = params.toString();
+			goto(q ? `/transactions?${q}` : '/transactions', {
+				shallow: true,
+				reset: false,
+				replace: true
+			});
+		}
 	}
 
 	$effect(() => {
@@ -59,58 +177,43 @@
 		}
 	});
 
-	function handleCreateOpenChange(open: boolean) {
-		showCreateModal = open;
-		if (!open && page.url.searchParams.get('new') === '1') {
-			goto('/transactions', { invalidateAll: false, replaceState: true });
-		}
-	}
-
-	// Client-side quick helper map for wallet & category names
-	const walletMap = $derived(
-		new Map((data.wallets || []).map((w) => [w.id, w.name]))
+	// Client-side maps and lists come from the frozen sync store, never the server.
+	const walletMap = $derived(new Map(syncEngine.wallets.map((w) => [w.id, w.name])));
+	const categoryMap = $derived(new Map(syncEngine.categories.map((c) => [c.id, c.name])));
+	const activeWallets = $derived(
+		syncEngine.wallets.filter((w) => !w.archived && w.deletedAt == null)
 	);
-	const categoryMap = $derived(
-		new Map((data.categories || []).map((c) => [c.id, c.name]))
+	const activeCategories = $derived(
+		syncEngine.categories.filter((c) => !c.archived && c.deletedAt == null)
 	);
-
+	const walletBalances = $derived(deriveWalletBalances(activeWallets, syncEngine.transactions));
 	const availableCategories = $derived(
-		(data.categories || []).filter((c) => c.kind === transactionKind)
+		activeCategories.filter((c) => c.kind === transactionKind)
 	);
+
+	const periodView = $derived(resolvePeriodView(filter.period, filter.startDate, filter.endDate));
 
 	// Count active secondary filters (exclude default period)
 	const activeFilterCount = $derived.by(() => {
 		let count = 0;
-		if (data.filters.type) count++;
-		if (data.filters.walletId) count++;
-		if (data.filters.categoryId) count++;
-		if (data.filters.period === 'custom' && (data.filters.startDate || data.filters.endDate)) count++;
+		if (filter.type) count++;
+		if (filter.walletId) count++;
+		if (filter.categoryId) count++;
+		if (filter.period === 'custom' && (filter.startDate || filter.endDate)) count++;
 		return count;
 	});
 
-	// Helper to build URL without a specific filter query param
+	// Helper to build a /transactions URL keeping the current filters, minus one param.
 	function buildUrlWithout(key: 'type' | 'walletId' | 'categoryId' | 'customDates'): string {
 		const params = new URLSearchParams();
-		if (data.filters.period && data.filters.period !== 'all') {
-			params.set('period', data.filters.period);
-		} else if (data.filters.period === 'all') {
-			params.set('period', 'all');
+		if (filter.period) params.set('period', filter.period);
+		if (key !== 'type' && filter.type) params.set('type', filter.type);
+		if (key !== 'walletId' && filter.walletId) params.set('walletId', filter.walletId);
+		if (key !== 'categoryId' && filter.categoryId) params.set('categoryId', filter.categoryId);
+		if (key !== 'customDates' && filter.period === 'custom') {
+			if (filter.startDate) params.set('startDate', filter.startDate);
+			if (filter.endDate) params.set('endDate', filter.endDate);
 		}
-
-		if (key !== 'type' && data.filters.type) {
-			params.set('type', data.filters.type);
-		}
-		if (key !== 'walletId' && data.filters.walletId) {
-			params.set('walletId', data.filters.walletId);
-		}
-		if (key !== 'categoryId' && data.filters.categoryId) {
-			params.set('categoryId', data.filters.categoryId);
-		}
-		if (key !== 'customDates' && data.filters.period === 'custom') {
-			if (data.filters.startDate) params.set('startDate', data.filters.startDate);
-			if (data.filters.endDate) params.set('endDate', data.filters.endDate);
-		}
-
 		const q = params.toString();
 		return q ? `/transactions?${q}` : '/transactions';
 	}
@@ -118,32 +221,131 @@
 	function buildPeriodUrl(period: string): string {
 		const params = new URLSearchParams();
 		params.set('period', period);
-		if (data.filters.type) params.set('type', data.filters.type);
-		if (data.filters.walletId) params.set('walletId', data.filters.walletId);
-		if (data.filters.categoryId) params.set('categoryId', data.filters.categoryId);
+		if (filter.type) params.set('type', filter.type);
+		if (filter.walletId) params.set('walletId', filter.walletId);
+		if (filter.categoryId) params.set('categoryId', filter.categoryId);
 		return `/transactions?${params.toString()}`;
 	}
 
-	// Map day totals by date YYYY-MM-DD
-	const dayTotalsMap = $derived(
-		new Map((data.dayTotals || []).map((dt) => [dt.date, dt]))
+	// "Load more" is pure client pagination: bump the URL's page, no fetch.
+	function loadMoreUrl(): string {
+		const params = new URLSearchParams();
+		if (filter.period) params.set('period', filter.period);
+		if (filter.type) params.set('type', filter.type);
+		if (filter.walletId) params.set('walletId', filter.walletId);
+		if (filter.categoryId) params.set('categoryId', filter.categoryId);
+		if (filter.period === 'custom') {
+			if (filter.startDate) params.set('startDate', filter.startDate);
+			if (filter.endDate) params.set('endDate', filter.endDate);
+		}
+		params.set('page', String(pageNum + 1));
+		if (pageSize !== 20) params.set('pageSize', String(pageSize));
+		return `/transactions?${params.toString()}`;
+	}
+
+	// ponytail: label/nav twin of `$lib/server/period.ts`; SvelteKit blocks
+	// `$lib/server/*` on the client. Bounds come from derive's `resolvePeriodBounds`.
+	const INDO_MONTH_FULL = [
+		'Januari',
+		'Februari',
+		'Maret',
+		'April',
+		'Mei',
+		'Juni',
+		'Juli',
+		'Agustus',
+		'September',
+		'Oktober',
+		'November',
+		'Desember'
+	];
+	const INDO_MONTH_SHORT = [
+		'Jan',
+		'Feb',
+		'Mar',
+		'Apr',
+		'Mei',
+		'Jun',
+		'Jul',
+		'Agu',
+		'Sep',
+		'Okt',
+		'Nov',
+		'Des'
+	];
+
+	const pad2 = (n: number) => String(n).padStart(2, '0');
+
+	function formatCustomRangeLabel(startIso: string, endIso: string): string {
+		const [sy, sm, sd] = startIso.split('-').map(Number);
+		const [ey, em, ed] = endIso.split('-').map(Number);
+		const start = `${sd} ${INDO_MONTH_SHORT[sm - 1] ?? ''}`;
+		const end = `${ed} ${INDO_MONTH_SHORT[em - 1] ?? ''}`;
+		return sy === ey ? `${start} – ${end} ${ey}` : `${start} ${sy} – ${end} ${ey}`;
+	}
+
+	function resolvePeriodView(
+		periodParam: string | null,
+		startDate: string | null,
+		endDate: string | null
+	): {
+		period: string;
+		startDate: string;
+		endDate: string;
+		label: string;
+		prev: string | null;
+		next: string | null;
+	} {
+		const bounds = resolvePeriodBounds(periodParam, startDate, endDate);
+		if (bounds.period === 'all') {
+			return { ...bounds, label: 'Semua', prev: null, next: null };
+		}
+		if (bounds.period === 'custom') {
+			return {
+				...bounds,
+				label: formatCustomRangeLabel(bounds.startDate, bounds.endDate),
+				prev: null,
+				next: null
+			};
+		}
+		const [year, month] = bounds.period.split('-').map(Number);
+		const now = new Date();
+		const nowYm = `${now.getUTCFullYear()}-${pad2(now.getUTCMonth() + 1)}`;
+		const label = `${INDO_MONTH_FULL[month - 1] ?? ''} ${year}`;
+		const prev = month === 1 ? `${year - 1}-12` : `${year}-${pad2(month - 1)}`;
+		const next = month === 12 ? `${year + 1}-01` : `${year}-${pad2(month + 1)}`;
+		const isCurrent = bounds.period === nowYm;
+		const isFuture = bounds.period > nowYm;
+		return { ...bounds, label, prev, next: isCurrent || isFuture ? null : next };
+	}
+
+	// Filtered + paged list straight from the frozen derive module.
+	const firstPage = $derived(
+		filterTransactions(syncEngine.transactions, { ...filter, page: 1, pageSize })
 	);
+	const loadedItems = $derived.by(() => {
+		const out: TransactionDTO[] = [...firstPage.items];
+		for (let p = 2; p <= pageNum; p++) {
+			out.push(
+				...filterTransactions(syncEngine.transactions, { ...filter, page: p, pageSize }).items
+			);
+		}
+		return out;
+	});
+	const hasMore = $derived(loadedItems.length < firstPage.total);
 
-	type TxRow = PageData['transactions'][number];
-
-	// Group transactions by date string (YYYY-MM-DD)
+	// Group loaded transactions by date string (YYYY-MM-DD)
 	interface GroupedDay {
 		date: string;
-		items: TxRow[];
+		items: TransactionDTO[];
 		totalNet: number;
 		totalCount: number;
 	}
 
 	const groupedDays = $derived.by<GroupedDay[]>(() => {
-		const groups: GroupedDay[] = [];
-		const groupMap = new Map<string, TxRow[]>();
+		const groupMap = new Map<string, TransactionDTO[]>();
 
-		for (const tx of data.transactions || []) {
+		for (const tx of loadedItems) {
 			const dateKey = tx.occurredAt.slice(0, 10);
 			let list = groupMap.get(dateKey);
 			if (!list) {
@@ -153,21 +355,15 @@
 			list.push(tx);
 		}
 
+		const groups: GroupedDay[] = [];
 		for (const [dateKey, items] of groupMap.entries()) {
-			const dt = dayTotalsMap.get(dateKey);
-			const totalNet = dt ? dt.net : items.reduce((sum, item) => {
+			const totalNet = items.reduce((sum, item) => {
 				if (item.type === 'income') return sum + item.amount;
 				if (item.type === 'expense') return sum - item.amount;
 				return sum;
 			}, 0);
-			const totalCount = dt ? dt.count : items.length;
 
-			groups.push({
-				date: dateKey,
-				items,
-				totalNet,
-				totalCount
-			});
+			groups.push({ date: dateKey, items, totalNet, totalCount: items.length });
 		}
 
 		return groups;
@@ -186,9 +382,9 @@
 		<div class="flex items-center justify-between gap-2">
 			<!-- Navigasi Periode Bulan (‹ Bulan Tahun ›) -->
 			<div class="flex items-center gap-1 sm:gap-1.5 min-w-0">
-				{#if data.periodNav.prev}
+				{#if periodView.prev}
 					<a
-						href={buildPeriodUrl(data.periodNav.prev)}
+						href={buildPeriodUrl(periodView.prev)}
 						class="w-11 h-11 shrink-0 rounded-md border-2 border-border bg-surface hover:bg-surface-subtle flex items-center justify-center font-black text-base shadow-hard-xs transition-all focus-visible:outline-2"
 						aria-label="Periode sebelumnya"
 						title="Periode sebelumnya"
@@ -205,12 +401,12 @@
 				{/if}
 
 				<span class="px-1.5 sm:px-2 font-black text-xs sm:text-sm text-content truncate select-none">
-					{data.filters.label}
+					{periodView.label}
 				</span>
 
-				{#if data.periodNav.next}
+				{#if periodView.next}
 					<a
-						href={buildPeriodUrl(data.periodNav.next)}
+						href={buildPeriodUrl(periodView.next)}
 						class="w-11 h-11 shrink-0 rounded-md border-2 border-border bg-surface hover:bg-surface-subtle flex items-center justify-center font-black text-base shadow-hard-xs transition-all focus-visible:outline-2"
 						aria-label="Periode berikutnya"
 						title="Periode berikutnya"
@@ -252,52 +448,52 @@
 		<!-- Chip Filter Aktif (Removable) -->
 		{#if activeFilterCount > 0}
 			<div class="flex flex-wrap items-center gap-1.5 pt-2 mt-2 border-t border-border/10">
-				{#if data.filters.type}
+				{#if filter.type}
 					<a
 						href={buildUrlWithout('type')}
 						class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full border border-border bg-surface text-xs font-bold text-content hover:bg-danger/10 hover:border-danger hover:text-danger transition-colors min-h-[32px]"
-						aria-label="Hapus filter {data.filters.type === 'income' ? 'Pemasukan' : data.filters.type === 'expense' ? 'Pengeluaran' : 'Transfer'}"
+						aria-label="Hapus filter {filter.type === 'income' ? 'Pemasukan' : filter.type === 'expense' ? 'Pengeluaran' : 'Transfer'}"
 					>
-						<span>{data.filters.type === 'income' ? 'Pemasukan' : data.filters.type === 'expense' ? 'Pengeluaran' : 'Transfer'}</span>
+						<span>{filter.type === 'income' ? 'Pemasukan' : filter.type === 'expense' ? 'Pengeluaran' : 'Transfer'}</span>
 						<span aria-hidden="true" class="font-black text-sm">×</span>
 					</a>
 				{/if}
 
-				{#if data.filters.walletId && walletMap.has(data.filters.walletId)}
+				{#if filter.walletId && walletMap.has(filter.walletId)}
 					<a
 						href={buildUrlWithout('walletId')}
 						class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full border border-border bg-surface text-xs font-bold text-content hover:bg-danger/10 hover:border-danger hover:text-danger transition-colors min-h-[32px]"
-						aria-label="Hapus filter {walletMap.get(data.filters.walletId)}"
+						aria-label="Hapus filter {walletMap.get(filter.walletId)}"
 					>
-						<span>{walletMap.get(data.filters.walletId)}</span>
+						<span>{walletMap.get(filter.walletId)}</span>
 						<span aria-hidden="true" class="font-black text-sm">×</span>
 					</a>
 				{/if}
 
-				{#if data.filters.categoryId && categoryMap.has(data.filters.categoryId)}
+				{#if filter.categoryId && categoryMap.has(filter.categoryId)}
 					<a
 						href={buildUrlWithout('categoryId')}
 						class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full border border-border bg-surface text-xs font-bold text-content hover:bg-danger/10 hover:border-danger hover:text-danger transition-colors min-h-[32px]"
-						aria-label="Hapus filter {categoryMap.get(data.filters.categoryId)}"
+						aria-label="Hapus filter {categoryMap.get(filter.categoryId)}"
 					>
-						<span>{categoryMap.get(data.filters.categoryId)}</span>
+						<span>{categoryMap.get(filter.categoryId)}</span>
 						<span aria-hidden="true" class="font-black text-sm">×</span>
 					</a>
 				{/if}
 
-				{#if data.filters.period === 'custom' && (data.filters.startDate || data.filters.endDate)}
+				{#if filter.period === 'custom' && (filter.startDate || filter.endDate)}
 					<a
 						href={buildUrlWithout('customDates')}
 						class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full border border-border bg-surface text-xs font-bold text-content hover:bg-danger/10 hover:border-danger hover:text-danger transition-colors min-h-[32px]"
 						aria-label="Hapus rentang kustom"
 					>
-						<span>{data.filters.startDate || '...'} – {data.filters.endDate || '...'}</span>
+						<span>{filter.startDate || '...'} – {filter.endDate || '...'}</span>
 						<span aria-hidden="true" class="font-black text-sm">×</span>
 					</a>
 				{/if}
 
 				<a
-					href={buildPeriodUrl(data.filters.period)}
+					href={buildPeriodUrl(periodView.period)}
 					class="text-xs font-bold text-content-muted hover:text-danger underline ml-1 px-1 py-1"
 				>
 					Hapus Semua
@@ -306,18 +502,24 @@
 		{/if}
 	</Card>
 
-	{#if form?.error}
-		<div class="p-4 rounded-md border-2 border-danger bg-danger/10 text-danger text-sm font-bold shadow-hard-xs">
-			{form.error}
+	{#if errorMessage}
+		<div class="p-4 rounded-md border-2 border-danger bg-danger/10 text-danger text-sm font-bold shadow-hard-xs" role="alert">
+			{errorMessage}
 		</div>
 	{/if}
 
 	<!-- Transactions List (Grouped by Day) -->
-	{#if !data.transactions || data.transactions.length === 0}
-		{#if data.hasAnyTransaction}
+	{#if !syncEngine.ready}
+		<div class="space-y-2" aria-busy="true" aria-live="polite">
+			{#each { length: 4 }, i (i)}
+				<div class="h-16 rounded-md border-2 border-border/30 bg-surface-subtle/60 animate-pulse"></div>
+			{/each}
+		</div>
+	{:else if loadedItems.length === 0}
+		{#if syncEngine.transactions.length > 0}
 			<EmptyState
 				title="Tidak Ada Transaksi di Periode Ini"
-				description="Tidak ditemukan riwayat kas untuk filter atau periode {data.filters.label}."
+				description="Tidak ditemukan riwayat kas untuk filter atau periode {periodView.label}."
 				actionLabel="Lihat Semua Periode"
 				actionHref="?period=all"
 			/>
@@ -379,6 +581,15 @@
 										{tx.type === 'income' ? 'Masuk' : tx.type === 'expense' ? 'Keluar' : 'Transfer'}
 									</Badge>
 
+									{#if tx.serverUpdatedAt === 0}
+										<span
+											class="shrink-0 text-[10px] font-bold text-content-muted uppercase tracking-wide"
+											title="Menunggu sinkronisasi"
+										>
+											• Menunggu
+										</span>
+									{/if}
+
 									<div class="min-w-0">
 										<p class="text-xs sm:text-sm font-bold text-content truncate leading-tight">
 											{tx.note || (tx.categoryId ? categoryMap.get(tx.categoryId) : 'Transaksi')}
@@ -416,19 +627,15 @@
 										>
 											Edit
 										</button>
-										<form method="POST" action="?/delete" class="inline">
-											<input type="hidden" name="id" value={tx.id} />
-											<button
-												type="submit"
-												onclick={(e) => {
-													if (!confirm('Hapus transaksi ini? Saldo dompet akan disesuaikan kembali.')) e.preventDefault();
-												}}
-												class="min-h-[44px] min-w-[44px] px-2 py-1 text-xs font-bold rounded border border-border bg-surface text-danger hover:bg-danger/10 transition-all flex items-center justify-center"
-												aria-label="Hapus transaksi"
-											>
-												Hapus
-											</button>
-										</form>
+										<button
+											type="button"
+											onclick={() => handleDelete(tx)}
+											disabled={!canWrite}
+											class="min-h-[44px] min-w-[44px] px-2 py-1 text-xs font-bold rounded border border-border bg-surface text-danger hover:bg-danger/10 transition-all flex items-center justify-center disabled:opacity-50"
+											aria-label="Hapus transaksi"
+										>
+											Hapus
+										</button>
 									</div>
 								</div>
 							</div>
@@ -438,11 +645,11 @@
 			{/each}
 		</div>
 
-		<!-- Pagination / Load More cursor -->
-		{#if data.hasMore && data.nextCursor}
+		<!-- Client-side pagination: grows the render window, no fetch -->
+		{#if hasMore}
 			<div class="flex justify-center pt-4">
 				<a
-					href="?cursor={data.nextCursor}&period={data.filters.period}&walletId={data.filters.walletId}&categoryId={data.filters.categoryId}&type={data.filters.type}&startDate={data.filters.startDate}&endDate={data.filters.endDate}"
+					href={loadMoreUrl()}
 					class="min-h-[44px] px-6 py-2.5 rounded-md border-2 border-border bg-surface hover:bg-surface-subtle font-bold text-sm shadow-hard-xs flex items-center justify-center transition-all"
 				>
 					Muat Lebih Banyak
@@ -458,16 +665,16 @@
 				<Dialog.Title class="text-lg font-black text-content">Filter Transaksi</Dialog.Title>
 			</Dialog.Header>
 
-			<form method="GET" action="/transactions" class="space-y-4">
+			<form onsubmit={applyFilters} class="space-y-4">
 				<div class="space-y-1.5">
 					<label for="sheet-filter-period" class="block text-sm font-bold text-content">Rentang Waktu</label>
 					<select
 						id="sheet-filter-period"
 						name="period"
-						value={data.filters.period}
+						value={filter.period}
 						class="w-full min-h-[44px] px-3 py-2 text-sm font-bold rounded-md border-2 border-border bg-surface text-content shadow-hard-xs"
 					>
-						<option value={data.filters.period !== 'all' && data.filters.period !== 'custom' ? data.filters.period : ''}>Bulan Terpilih ({data.filters.label})</option>
+						<option value={filter.period !== 'all' && filter.period !== 'custom' ? filter.period : ''}>Bulan Terpilih ({periodView.label})</option>
 						<option value="all">Semua Periode</option>
 					</select>
 				</div>
@@ -477,7 +684,7 @@
 					<select
 						id="sheet-filter-type"
 						name="type"
-						value={data.filters.type}
+						value={filter.type}
 						class="w-full min-h-[44px] px-3 py-2 text-sm font-bold rounded-md border-2 border-border bg-surface text-content shadow-hard-xs"
 					>
 						<option value="">Semua Tipe</option>
@@ -492,11 +699,11 @@
 					<select
 						id="sheet-filter-wallet"
 						name="walletId"
-						value={data.filters.walletId}
+						value={filter.walletId}
 						class="w-full min-h-[44px] px-3 py-2 text-sm font-bold rounded-md border-2 border-border bg-surface text-content shadow-hard-xs"
 					>
 						<option value="">Semua Dompet</option>
-						{#each data.wallets || [] as w}
+						{#each activeWallets as w}
 							<option value={w.id}>{w.name}</option>
 						{/each}
 					</select>
@@ -507,17 +714,17 @@
 					<select
 						id="sheet-filter-category"
 						name="categoryId"
-						value={data.filters.categoryId}
+						value={filter.categoryId}
 						class="w-full min-h-[44px] px-3 py-2 text-sm font-bold rounded-md border-2 border-border bg-surface text-content shadow-hard-xs"
 					>
 						<option value="">Semua Kategori</option>
-						{#each data.categories || [] as c}
+						{#each activeCategories as c}
 							<option value={c.id}>{c.name}</option>
 						{/each}
 					</select>
 				</div>
 
-				{#if data.filters.period === 'custom'}
+				{#if filter.period === 'custom'}
 					<div class="space-y-3 pt-2 border-t border-border/20">
 						<p class="text-xs font-bold text-content-muted uppercase tracking-wider">Rentang Kustom</p>
 						<div class="space-y-1.5">
@@ -526,7 +733,7 @@
 								type="date"
 								id="sheet-filter-start"
 								name="startDate"
-								value={data.filters.startDate}
+								value={filter.startDate}
 								class="w-full min-h-[44px] px-3 py-2 text-sm font-bold rounded-md border-2 border-border bg-surface text-content shadow-hard-xs"
 							/>
 						</div>
@@ -536,7 +743,7 @@
 								type="date"
 								id="sheet-filter-end"
 								name="endDate"
-								value={data.filters.endDate}
+								value={filter.endDate}
 								class="w-full min-h-[44px] px-3 py-2 text-sm font-bold rounded-md border-2 border-border bg-surface text-content shadow-hard-xs"
 							/>
 						</div>
@@ -545,7 +752,7 @@
 
 				<div class="flex items-center justify-between gap-2 pt-3 border-t-2 border-border/10">
 					<a
-						href={buildPeriodUrl(data.filters.period)}
+						href={buildPeriodUrl(periodView.period)}
 						class="min-h-[44px] px-4 py-2 text-xs font-bold rounded-md border-2 border-border bg-surface text-content hover:bg-surface-subtle flex items-center justify-center"
 					>
 						Reset Filter
@@ -599,10 +806,7 @@
 				</button>
 			</div>
 
-			<form method="POST" action="?/create" onsubmit={handleOptimisticSubmit} class="space-y-4">
-				<input type="hidden" name="formKind" value={transactionKind === 'transfer' ? 'transfer' : 'transaction'} />
-				<input type="hidden" name="type" value={transactionKind} />
-
+			<form onsubmit={handleCreate} class="space-y-4">
 				<!-- Nominal dengan live format Rupiah -->
 				<NumericInput
 					name="amount"
@@ -621,8 +825,8 @@
 							class="w-full min-h-[44px] px-3 py-2 text-sm font-bold rounded-md border-2 border-border bg-surface text-content focus:outline-none focus:ring-2 focus:ring-content shadow-hard-xs"
 						>
 							<option value="" disabled selected>Pilih dompet asal...</option>
-							{#each data.wallets || [] as w}
-								<option value={w.id}>{w.name} ({formatRupiah(w.balance)})</option>
+							{#each activeWallets as w}
+								<option value={w.id}>{w.name} ({formatRupiah(walletBalances.get(w.id) ?? 0)})</option>
 							{/each}
 						</select>
 					</div>
@@ -636,8 +840,8 @@
 							class="w-full min-h-[44px] px-3 py-2 text-sm font-bold rounded-md border-2 border-border bg-surface text-content focus:outline-none focus:ring-2 focus:ring-content shadow-hard-xs"
 						>
 							<option value="" disabled selected>Pilih dompet tujuan...</option>
-							{#each data.wallets || [] as w}
-								<option value={w.id}>{w.name} ({formatRupiah(w.balance)})</option>
+							{#each activeWallets as w}
+								<option value={w.id}>{w.name} ({formatRupiah(walletBalances.get(w.id) ?? 0)})</option>
 							{/each}
 						</select>
 					</div>
@@ -651,8 +855,8 @@
 							class="w-full min-h-[44px] px-3 py-2 text-sm font-bold rounded-md border-2 border-border bg-surface text-content focus:outline-none focus:ring-2 focus:ring-content shadow-hard-xs"
 						>
 							<option value="" disabled selected>Pilih dompet...</option>
-							{#each data.wallets || [] as w}
-								<option value={w.id}>{w.name} ({formatRupiah(w.balance)})</option>
+							{#each activeWallets as w}
+								<option value={w.id}>{w.name} ({formatRupiah(walletBalances.get(w.id) ?? 0)})</option>
 							{/each}
 						</select>
 					</div>
@@ -699,7 +903,7 @@
 					>
 						Batal
 					</Button>
-					<Button type="submit" variant="primary">
+					<Button type="submit" variant="primary" disabled={!canWrite}>
 						Simpan Transaksi
 					</Button>
 				</div>
@@ -715,10 +919,7 @@
 					<Dialog.Title class="text-lg font-black text-content">Edit Transaksi</Dialog.Title>
 				</Dialog.Header>
 
-				<form method="POST" action="?/update" class="space-y-4">
-					<input type="hidden" name="id" value={editingTransaction.id} />
-					<input type="hidden" name="type" value={editingTransaction.type} />
-
+				<form onsubmit={handleUpdate} class="space-y-4">
 					<NumericInput
 						name="amount"
 						label="Nominal Transaksi"
@@ -735,8 +936,8 @@
 							required
 							class="w-full min-h-[44px] px-3 py-2 text-sm font-bold rounded-md border-2 border-border bg-surface text-content focus:outline-none focus:ring-2 focus:ring-content shadow-hard-xs"
 						>
-							{#each data.wallets || [] as w}
-								<option value={w.id}>{w.name} ({formatRupiah(w.balance)})</option>
+							{#each activeWallets as w}
+								<option value={w.id}>{w.name} ({formatRupiah(walletBalances.get(w.id) ?? 0)})</option>
 							{/each}
 						</select>
 					</div>
@@ -750,7 +951,7 @@
 							required
 							class="w-full min-h-[44px] px-3 py-2 text-sm font-bold rounded-md border-2 border-border bg-surface text-content focus:outline-none focus:ring-2 focus:ring-content shadow-hard-xs"
 						>
-							{#each data.categories || [] as c}
+							{#each activeCategories as c}
 								<option value={c.id}>{c.name}</option>
 							{/each}
 						</select>
@@ -782,7 +983,7 @@
 						>
 							Batal
 						</Button>
-						<Button type="submit" variant="primary">
+						<Button type="submit" variant="primary" disabled={!canWrite}>
 							Simpan Perubahan
 						</Button>
 					</div>

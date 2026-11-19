@@ -1,7 +1,19 @@
 import type { WalletDTO, CategoryDTO, TransactionDTO, SyncPushMutation } from '$lib/shared/sync-contract';
 
-export const IDB_NAME = 'uangku_pwa_ledger';
+/**
+ * Legacy shared database. Pre-per-user builds wrote every account's rows here
+ * with no user scoping, so it is abandoned (deleted best-effort, see
+ * `dropLegacySharedDb`) rather than migrated.
+ */
+export const LEGACY_IDB_NAME = 'uangku_pwa_ledger';
 export const IDB_VERSION = 1;
+
+/** One database per user id: account switching cannot surface another user's rows. */
+export function ledgerDbName(userId: string): string {
+	return `uangku_pwa_ledger_${userId}`;
+}
+
+const LEGACY_CLEANUP_FLAG = 'legacy_shared_db_removed';
 
 export interface SyncMetaRecord {
 	key: string;
@@ -21,14 +33,14 @@ export interface OutboxRecord extends SyncPushMutation {
 	retryCount: number;
 }
 
-export function openLedgerDB(): Promise<IDBDatabase> {
+export function openLedgerDB(userId: string): Promise<IDBDatabase> {
 	return new Promise((resolve, reject) => {
 		if (typeof indexedDB === 'undefined') {
 			reject(new Error('IndexedDB not available in current environment'));
 			return;
 		}
 
-		const request = indexedDB.open(IDB_NAME, IDB_VERSION);
+		const request = indexedDB.open(ledgerDbName(userId), IDB_VERSION);
 
 		request.onupgradeneeded = (event) => {
 			const db = request.result;
@@ -74,9 +86,37 @@ export function openLedgerDB(): Promise<IDBDatabase> {
 			}
 		};
 
-		request.onsuccess = () => resolve(request.result);
+		request.onsuccess = () => {
+			resolve(request.result);
+			void dropLegacySharedDb(request.result);
+		};
 		request.onerror = () => reject(request.error);
 	});
+}
+
+/**
+ * ponytail: delete, don't migrate — the legacy DB has no per-row attribution, so
+ * its rows cannot be safely claimed by any single user. Runs once per user DB,
+ * tracked by a `sync_meta` flag; upgrade path is read/attribute/write if those
+ * rows ever need salvaging.
+ */
+async function dropLegacySharedDb(db: IDBDatabase): Promise<void> {
+	try {
+		const alreadyDone = await idbGet<SyncMetaRecord>(db, 'sync_meta', LEGACY_CLEANUP_FLAG);
+		if (alreadyDone) return;
+
+		const { promise, resolve } = Promise.withResolvers<boolean>();
+		const request = indexedDB.deleteDatabase(LEGACY_IDB_NAME);
+		request.onsuccess = () => resolve(true);
+		request.onerror = () => resolve(false);
+		// Blocked = an older tab still holds the legacy DB open; retry on a later open.
+		request.onblocked = () => resolve(false);
+		if (!(await promise)) return;
+
+		await idbPut(db, 'sync_meta', { key: LEGACY_CLEANUP_FLAG, value: true });
+	} catch {
+		// Best effort: a failed cleanup must never block the ledger from opening.
+	}
 }
 
 export function idbGet<T>(db: IDBDatabase, storeName: string, key: IDBValidKey): Promise<T | undefined> {

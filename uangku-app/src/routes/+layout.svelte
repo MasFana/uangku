@@ -5,7 +5,6 @@
 	import Logo from '../lib/components/Logo.svelte';
 	import ThemeToggle from '../lib/components/ThemeToggle.svelte';
 	import { syncEngine } from '$lib/client/sync/engine.svelte';
-	import { onMount } from 'svelte';
 
 	interface Props {
 		children: Snippet;
@@ -13,10 +12,12 @@
 
 	let { children }: Props = $props();
 
-	onMount(() => {
-		if (page.data?.user?.id) {
-			syncEngine.init(page.data.user.id);
-		}
+	// Keyed on the session user: first load inits, an account switch in-place
+	// re-inits (the engine disposes the previous user's DB + outbox), logout empties the store.
+	$effect(() => {
+		const userId = page.data.user?.id ?? null;
+		if (userId) void syncEngine.init(userId);
+		else syncEngine.dispose();
 	});
 
 	// Check if current route is an auth page (login/register) to simplify shell
@@ -107,23 +108,54 @@
 				</nav>
 
 				<div class="flex items-center gap-2 shrink-0">
-					<!-- Offline / Sync Indicator Badge -->
-					{#if syncEngine.syncStatus === 'offline'}
-						<span class="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-bold bg-amber-500/20 text-amber-500 border border-amber-500/30" title="Bekerja offline">
-							<span class="w-1.5 h-1.5 rounded-full bg-amber-500"></span>
-							Offline
-						</span>
-					{:else if syncEngine.syncStatus === 'syncing'}
-						<span class="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-bold bg-brand/20 text-brand border border-brand/30" title="Sinkronisasi data...">
-							<span class="w-1.5 h-1.5 rounded-full bg-brand animate-pulse"></span>
-							Sync
-						</span>
-					{/if}
+					<!-- Sync state: offline / pending outbox / last error (text + aria-live, not color-only) -->
+					<div class="flex items-center gap-1" aria-live="polite">
+						{#if syncEngine.status === 'offline'}
+							<span
+								class="inline-flex items-center gap-1 min-h-[44px] px-2 rounded text-xs font-bold bg-amber-500/20 text-amber-600 border border-amber-500/30"
+								title="Bekerja offline — perubahan tersimpan di perangkat"
+							>
+								<span aria-hidden="true" class="w-1.5 h-1.5 rounded-full bg-amber-500"></span>
+								Offline
+							</span>
+						{/if}
+						{#if syncEngine.pendingCount > 0}
+							<span
+								class="inline-flex items-center gap-1 min-h-[44px] px-2 rounded text-xs font-bold bg-brand/20 text-brand border border-brand/30"
+								title="{syncEngine.pendingCount} perubahan menunggu sinkronisasi"
+							>
+								<span aria-hidden="true" class="w-1.5 h-1.5 rounded-full bg-brand animate-pulse"></span>
+								tertunda ({syncEngine.pendingCount})
+							</span>
+						{/if}
+						{#if syncEngine.lastError}
+							<button
+								type="button"
+								onclick={() => syncEngine.triggerSync()}
+								class="inline-flex items-center gap-1 min-h-[44px] min-w-[44px] px-2 rounded text-xs font-bold bg-red-500/15 text-red-600 border border-red-500/40 hover:bg-red-500/25"
+								title={syncEngine.lastError}
+								aria-label="Sinkronisasi gagal: {syncEngine.lastError}. Ketuk untuk coba lagi."
+							>
+								<span aria-hidden="true">⚠</span>
+								Gagal — coba lagi
+							</button>
+						{/if}
+					</div>
 					<ThemeToggle />
 				</div>
 			{/if}
 		</div>
 	</header>
+
+	<!-- A rejected write is a data decision, not a transient failure: state it in text, not only in a tooltip. -->
+	{#if !isAuthPage && syncEngine.conflictNotice}
+		<div class="w-full border-b-2 border-amber-500/40 bg-amber-500/10" role="status" aria-live="polite">
+			<div class="max-w-4xl mx-auto px-4 py-2 flex items-start gap-2">
+				<span aria-hidden="true" class="text-amber-600 leading-5">⚠</span>
+				<p class="flex-1 text-xs sm:text-sm font-bold text-content leading-5">{syncEngine.conflictNotice}</p>
+			</div>
+		</div>
+	{/if}
 
 	<!-- Main Content Area (padding-bottom diatur md:pb-28 agar FAB desktop tidak menutupi baris/tombol bawah) -->
 	<main id="main-content" class="flex-1 w-full max-w-4xl mx-auto px-4 py-4 md:py-6 {isAuthPage ? '' : 'pb-24 md:pb-28'}">
