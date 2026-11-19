@@ -109,7 +109,7 @@ A D1 statement accepts at most 100 bound parameters. Inserting 17 categories as 
 
 ## Tests
 
-`vitest.config.ts` runs plain Vitest (`pool: 'forks'`); suites that need a database open a real one through `getPlatformProxy` from `wrangler`. Suites live in `uangku-app/tests/`. Files run one at a time (`fileParallelism: false`) and each test has a 90 second timeout, because the host used for development is small. `npx vitest run` reports 20 files and 185 tests.
+`vitest.config.ts` runs plain Vitest (`pool: 'forks'`); suites that need a database open a real one through `getPlatformProxy` from `wrangler`. Suites live in `uangku-app/tests/`. Files run one at a time (`fileParallelism: false`) and each test has a 90 second timeout, because the host used for development is small. `npx vitest run` reports 23 files and 229 tests.
 
 ## Build and deploy
 

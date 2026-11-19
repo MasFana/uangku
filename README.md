@@ -95,7 +95,7 @@ Run these inside `uangku-app/`.
 
 ## Tests
 
-`npm test` runs 185 tests across 20 files. Suites that need a database open a real one through `getPlatformProxy` from `wrangler`. They cover balance arithmetic including transfers, per user isolation, period resolution (month boundaries, February, year changes), CSV escaping, default category seeding, the route guard, sync merging and the `/api/sync` endpoint, Valibot schemas, and client/server derivation parity (`tests/be/derive-parity.test.ts` compares the client derivation against real D1 SQL).
+`npm test` runs 229 tests across 23 files. Suites that need a database open a real one through `getPlatformProxy` from `wrangler`. They cover balance arithmetic including transfers, per user isolation, period resolution (month boundaries, February, year changes), CSV escaping, default category seeding, the route guard, sync merging and the `/api/sync` endpoint, Valibot schemas, and client/server derivation parity (`tests/be/derive-parity.test.ts` compares the client derivation against real D1 SQL).
 
 ## Deploy
 
