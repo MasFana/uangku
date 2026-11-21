@@ -7,6 +7,7 @@
 	import * as Dialog from '$lib/components/ui/dialog/index.js';
 	import { page } from '$app/state';
 	import { goto } from '$app/navigation';
+	import { currentUrl } from '$lib/client/url-state';
 	import { syncEngine } from '$lib/client/sync/engine.svelte';
 	import { DEFAULT_CATEGORIES } from '$lib/shared/default-categories';
 
@@ -18,12 +19,12 @@
 
 	// Filter tab lives in the URL (`?kind=`) so it deep-links like the other filters.
 	const activeTab = $derived.by((): 'all' | 'expense' | 'income' => {
-		const k = page.url.searchParams.get('kind');
+		const k = currentUrl().searchParams.get('kind');
 		return k === 'income' || k === 'expense' ? k : 'all';
 	});
 
 	function setTab(tab: 'all' | 'expense' | 'income') {
-		const url = new URL(page.url.href);
+		const url = new URL(currentUrl().href);
 		if (tab === 'all') url.searchParams.delete('kind');
 		else url.searchParams.set('kind', tab);
 		// `shallow` keeps the filter URL-only: no navigation, no scroll/focus reset.

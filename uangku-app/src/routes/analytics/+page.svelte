@@ -5,8 +5,8 @@
 	import CashflowChart from '$lib/components/CashflowChart.svelte';
 	import * as Dialog from '$lib/components/ui/dialog/index.js';
 	import { formatRupiah } from '$lib/utils';
-	import { page } from '$app/state';
 	import { goto } from '$app/navigation';
+	import { currentUrl } from '$lib/client/url-state';
 	import { syncEngine } from '$lib/client/sync/engine.svelte';
 	import { deriveAnalytics } from '$lib/client/derive';
 
@@ -16,13 +16,13 @@
 	// change re-derives locally and issues no request.
 	const result = $derived(
 		deriveAnalytics(syncEngine.transactions, syncEngine.wallets, syncEngine.categories, {
-			range: page.url.searchParams.get('range'),
-			from: page.url.searchParams.get('from'),
-			to: page.url.searchParams.get('to'),
-			granularity: page.url.searchParams.get('granularity'),
-			walletId: page.url.searchParams.get('walletId'),
-			categoryId: page.url.searchParams.get('categoryId'),
-			type: page.url.searchParams.get('type')
+			range: currentUrl().searchParams.get('range'),
+			from: currentUrl().searchParams.get('from'),
+			to: currentUrl().searchParams.get('to'),
+			granularity: currentUrl().searchParams.get('granularity'),
+			walletId: currentUrl().searchParams.get('walletId'),
+			categoryId: currentUrl().searchParams.get('categoryId'),
+			type: currentUrl().searchParams.get('type')
 		})
 	);
 
@@ -38,7 +38,7 @@
 
 	/** Writes one filter into the URL; `null`/'' removes it. */
 	function applyFilter(key: string, value: string | null) {
-		const params = new URLSearchParams(page.url.search);
+		const params = new URLSearchParams(currentUrl().search);
 		if (value) params.set(key, value);
 		else params.delete(key);
 		// `from`/`to` only mean anything for a custom range.

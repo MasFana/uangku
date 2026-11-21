@@ -10,6 +10,7 @@
 	import { page } from '$app/state';
 	import { goto } from '$app/navigation';
 	import { syncEngine } from '$lib/client/sync/engine.svelte';
+	import { currentUrl } from '$lib/client/url-state';
 	import { deriveWalletBalances } from '$lib/client/derive/balances';
 	import { filterTransactions, resolvePeriodBounds } from '$lib/client/derive/filters';
 	import type { TransactionDTO } from '$lib/shared/sync-contract';
@@ -17,13 +18,21 @@
 	// Rendered entirely from IndexedDB via the frozen sync engine — no server load.
 
 	// Modal / form states
-	let showCreateModal = $state(page.url.searchParams.get('new') === '1');
+	let showCreateModal = $state(currentUrl().searchParams.get('new') === '1');
 	let showFilterSheet = $state(false);
+	// Sheet-only state: the sheet is a draft until "Terapkan Filter" writes the URL.
+	let sheetPeriod = $state('');
+	let sheetType = $state('');
+	let sheetWalletId = $state('');
+	let sheetCategoryId = $state('');
+	let sheetStartDate = $state('');
+	let sheetEndDate = $state('');
 	let transactionKind = $state<'expense' | 'income' | 'transfer'>('expense');
 	let editingTransaction = $state<any | null>(null);
 
 	// ---- URL-backed filter state (deep-linkable, no server load) ----
-	const urlParams = $derived(page.url.searchParams);
+	// `currentUrl()` also sees shallow navigations; `page.url` does not.
+	const urlParams = $derived(currentUrl().searchParams);
 	const filter = $derived({
 		period: urlParams.get('period'),
 		startDate: urlParams.get('startDate'),
@@ -142,6 +151,17 @@
 		}
 	}
 
+	const isMonthPeriod = (p: string | null) => p !== null && /^\d{4}-\d{2}$/.test(p);
+	function openFilterSheet() {
+		sheetPeriod = filter.period ?? '';
+		sheetType = filter.type ?? '';
+		sheetWalletId = filter.walletId ?? '';
+		sheetCategoryId = filter.categoryId ?? '';
+		sheetStartDate = filter.startDate ?? '';
+		sheetEndDate = filter.endDate ?? '';
+		showFilterSheet = true;
+	}
+
 	function applyFilters(e: SubmitEvent) {
 		e.preventDefault();
 		const fd = new FormData(e.currentTarget as HTMLFormElement);
@@ -159,8 +179,8 @@
 
 	function handleCreateOpenChange(open: boolean) {
 		showCreateModal = open;
-		if (!open && page.url.searchParams.get('new') === '1') {
-			const params = new URLSearchParams(page.url.searchParams.toString());
+		if (!open && currentUrl().searchParams.get('new') === '1') {
+			const params = new URLSearchParams(currentUrl().searchParams.toString());
 			params.delete('new');
 			const q = params.toString();
 			goto(q ? `/transactions?${q}` : '/transactions', {
@@ -172,7 +192,7 @@
 	}
 
 	$effect(() => {
-		if (page.url.searchParams.get('new') === '1') {
+		if (currentUrl().searchParams.get('new') === '1') {
 			showCreateModal = true;
 		}
 	});
@@ -430,7 +450,7 @@
 					variant="outline"
 					size="sm"
 					class="min-h-[44px] px-2.5 sm:px-3 relative font-bold text-xs"
-					onclick={() => (showFilterSheet = true)}
+					onclick={openFilterSheet}
 				>
 					<svg class="w-4 h-4 mr-1 inline-block" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.25" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
 						<polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3" />
@@ -650,6 +670,11 @@
 			<div class="flex justify-center pt-4">
 				<a
 					href={loadMoreUrl()}
+					onclick={(e) => {
+						// Pure client pagination: `shallow` keeps the scroll position and issues no request.
+						e.preventDefault();
+						void goto(loadMoreUrl(), { shallow: true, reset: false });
+					}}
 					class="min-h-[44px] px-6 py-2.5 rounded-md border-2 border-border bg-surface hover:bg-surface-subtle font-bold text-sm shadow-hard-xs flex items-center justify-center transition-all"
 				>
 					Muat Lebih Banyak
@@ -671,10 +696,15 @@
 					<select
 						id="sheet-filter-period"
 						name="period"
-						value={filter.period}
+						bind:value={sheetPeriod}
 						class="w-full min-h-[44px] px-3 py-2 text-sm font-bold rounded-md border-2 border-border bg-surface text-content shadow-hard-xs"
 					>
-						<option value={filter.period !== 'all' && filter.period !== 'custom' ? filter.period : ''}>Bulan Terpilih ({periodView.label})</option>
+						{#if isMonthPeriod(filter.period)}
+							<option value={filter.period}>Bulan Terpilih ({periodView.label})</option>
+						{:else}
+							<option value="">Bulan Terpilih ({periodView.label})</option>
+						{/if}
+						<option value="custom">Rentang Kustom</option>
 						<option value="all">Semua Periode</option>
 					</select>
 				</div>
@@ -684,7 +714,7 @@
 					<select
 						id="sheet-filter-type"
 						name="type"
-						value={filter.type}
+						bind:value={sheetType}
 						class="w-full min-h-[44px] px-3 py-2 text-sm font-bold rounded-md border-2 border-border bg-surface text-content shadow-hard-xs"
 					>
 						<option value="">Semua Tipe</option>
@@ -699,7 +729,7 @@
 					<select
 						id="sheet-filter-wallet"
 						name="walletId"
-						value={filter.walletId}
+						bind:value={sheetWalletId}
 						class="w-full min-h-[44px] px-3 py-2 text-sm font-bold rounded-md border-2 border-border bg-surface text-content shadow-hard-xs"
 					>
 						<option value="">Semua Dompet</option>
@@ -714,7 +744,7 @@
 					<select
 						id="sheet-filter-category"
 						name="categoryId"
-						value={filter.categoryId}
+						bind:value={sheetCategoryId}
 						class="w-full min-h-[44px] px-3 py-2 text-sm font-bold rounded-md border-2 border-border bg-surface text-content shadow-hard-xs"
 					>
 						<option value="">Semua Kategori</option>
@@ -724,7 +754,7 @@
 					</select>
 				</div>
 
-				{#if filter.period === 'custom'}
+				{#if sheetPeriod === 'custom'}
 					<div class="space-y-3 pt-2 border-t border-border/20">
 						<p class="text-xs font-bold text-content-muted uppercase tracking-wider">Rentang Kustom</p>
 						<div class="space-y-1.5">
@@ -733,7 +763,7 @@
 								type="date"
 								id="sheet-filter-start"
 								name="startDate"
-								value={filter.startDate}
+								bind:value={sheetStartDate}
 								class="w-full min-h-[44px] px-3 py-2 text-sm font-bold rounded-md border-2 border-border bg-surface text-content shadow-hard-xs"
 							/>
 						</div>
@@ -743,7 +773,7 @@
 								type="date"
 								id="sheet-filter-end"
 								name="endDate"
-								value={filter.endDate}
+								bind:value={sheetEndDate}
 								class="w-full min-h-[44px] px-3 py-2 text-sm font-bold rounded-md border-2 border-border bg-surface text-content shadow-hard-xs"
 							/>
 						</div>
