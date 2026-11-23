@@ -103,3 +103,52 @@ export function daysBetweenUtc(a: Date, b: Date): number {
 export function lastUtcDayOfMonth(year: number, monthIndex: number): number {
 	return new Date(Date.UTC(year, monthIndex + 1, 0)).getUTCDate();
 }
+
+export type BucketGranularity = 'day' | 'week' | 'month';
+
+/**
+ * Rentang kalender satu titik grafik. Kunci harian/mingguan berbentuk `YYYY-MM-DD`
+ * (mingguan = hari Senin), kunci bulanan `YYYY-MM`.
+ *
+ * Mengembalikan `null` bila kuncinya tidak sesuai granularitas, supaya pemanggil bisa
+ * jatuh ke label ringkas daripada menampilkan rentang yang salah.
+ */
+export function bucketRange(
+	bucket: string,
+	granularity: BucketGranularity
+): { startDate: string; endDate: string } | null {
+	if (granularity === 'month') {
+		if (!/^\d{4}-\d{2}$/.test(bucket)) return null;
+		const [y, m] = bucket.split('-').map(Number);
+		return { startDate: `${bucket}-01`, endDate: `${bucket}-${pad2(lastUtcDayOfMonth(y, m - 1))}` };
+	}
+	const start = parseUtcDateString(bucket);
+	if (!start) return null;
+	const end = new Date(start.getTime() + (granularity === 'week' ? 6 : 0) * 86400000);
+	return { startDate: toUtcDateString(start), endDate: toUtcDateString(end) };
+}
+
+/**
+ * Label sumbu ringkas dari kunci bulanan `YYYY-MM`: `2026-09` -> `Sep`.
+ * Kunci yang tidak sesuai format dikembalikan apa adanya.
+ */
+export function monthKeyShortLabel(monthKey: string): string {
+	if (!/^\d{4}-\d{2}$/.test(monthKey)) return monthKey;
+	return INDO_MONTH_NAMES[Number(monthKey.slice(5, 7)) - 1] ?? monthKey;
+}
+
+/**
+ * Label panjang satu titik grafik: `3 Nov 2026`, `3 Nov 2026 - 9 Nov 2026`,
+ * atau `November 2026`. Dipakai panel nilai grafik, bukan sumbu (sumbu tetap ringkas).
+ */
+export function bucketLabel(bucket: string, granularity: BucketGranularity): string {
+	const range = bucketRange(bucket, granularity);
+	if (!range) return bucket;
+	const [sy, sm, sd] = range.startDate.split('-').map(Number);
+	const [ey, em, ed] = range.endDate.split('-').map(Number);
+	if (granularity === 'month') return `${INDO_MONTH_FULL[sm - 1] ?? ''} ${sy}`.trim();
+	const startText = `${sd} ${INDO_MONTH_NAMES[sm - 1] ?? ''}`;
+	if (granularity === 'day') return `${startText} ${sy}`;
+	const endText = `${ed} ${INDO_MONTH_NAMES[em - 1] ?? ''}`;
+	return sy === ey ? `${startText} - ${endText} ${sy}` : `${startText} ${sy} - ${endText} ${ey}`;
+}

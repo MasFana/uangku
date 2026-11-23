@@ -5,6 +5,7 @@
 	import CashflowChart from '$lib/components/CashflowChart.svelte';
 	import * as Dialog from '$lib/components/ui/dialog/index.js';
 	import { formatDateIndo, formatRupiah } from '$lib/utils';
+	import { bucketRange } from '$lib/shared/dates';
 	import { goto } from '$app/navigation';
 	import { currentUrl } from '$lib/client/url-state';
 	import { syncEngine } from '$lib/client/sync/engine.svelte';
@@ -94,6 +95,17 @@
 		return `/transactions?${params.toString()}`;
 	}
 
+	/**
+	 * Tautan daftar Transaksi untuk satu titik grafik.
+	 * Bulanan memakai preset `YYYY-MM`, harian dan mingguan memakai rentang kustom.
+	 */
+	function txHrefForBucket(bucket: string): string {
+		const range = bucketRange(bucket, filters.granularity);
+		if (!range) return txHref();
+		if (filters.granularity === 'month') return txHref({ period: bucket });
+		return txHref({ period: 'custom', startDate: range.startDate, endDate: range.endDate });
+	}
+
 	const largestHref = $derived.by(() => {
 		if (!summary.largest) return null;
 		const day = summary.largest.occurredAt.slice(0, 10);
@@ -120,6 +132,8 @@
 	const granularityLabel = $derived(
 		filters.granularity === 'month' ? 'Bulanan' : filters.granularity === 'week' ? 'Mingguan' : 'Harian'
 	);
+	/** Bentuk sifat untuk kalimat: "pemasukan dan pengeluaran harian", bukan "per harian". */
+	const granularityAdjective = $derived(granularityLabel.toLowerCase());
 	const basisLabel = $derived(expenseBasis ? 'Pengeluaran' : 'Pemasukan');
 </script>
 
@@ -127,7 +141,7 @@
 	<title>Analisis Keuangan — Uangku</title>
 </svelte:head>
 
-<div class="space-y-4">
+<div class="space-y-3 sm:space-y-4">
 	<h1 class="sr-only">Analisis & Laporan</h1>
 
 	{#if !syncEngine.ready}
@@ -207,7 +221,7 @@
 		<!-- Ringkasan Statistik: 2 kolom di ponsel, 3 kolom di desktop -->
 		<div class="grid grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4">
 			<!-- Pemasukan Total -->
-			<Card class="p-3.5 sm:p-4">
+			<Card class="p-3 sm:p-4">
 				<p class="text-[11px] font-bold text-content-muted uppercase tracking-wider mb-0.5">Total Pemasukan</p>
 				<p class="text-base sm:text-lg font-black font-mono text-income tabular-nums">
 					+{formatRupiah(summary.income)}
@@ -218,7 +232,7 @@
 			</Card>
 
 			<!-- Pengeluaran Total -->
-			<Card class="p-3.5 sm:p-4">
+			<Card class="p-3 sm:p-4">
 				<p class="text-[11px] font-bold text-content-muted uppercase tracking-wider mb-0.5">Total Pengeluaran</p>
 				<p class="text-base sm:text-lg font-black font-mono text-expense tabular-nums">
 					-{formatRupiah(summary.expense)}
@@ -229,7 +243,7 @@
 			</Card>
 
 			<!-- Net Cashflow -->
-			<Card class="p-3.5 sm:p-4">
+			<Card class="p-3 sm:p-4">
 				<p class="text-[11px] font-bold text-content-muted uppercase tracking-wider mb-0.5">Selisih Bersih</p>
 				<p class="text-base sm:text-lg font-black font-mono tabular-nums {summary.net >= 0 ? 'text-income' : 'text-expense'}">
 					{summary.net >= 0 ? '+' : '-'}{formatRupiah(Math.abs(summary.net))}
@@ -243,7 +257,7 @@
 			</Card>
 
 			<!-- Jumlah Transaksi -->
-			<Card class="p-3.5 sm:p-4">
+			<Card class="p-3 sm:p-4">
 				<p class="text-[11px] font-bold text-content-muted uppercase tracking-wider mb-0.5">Total Transaksi</p>
 				<p class="text-base sm:text-lg font-black font-mono text-content tabular-nums">
 					{summary.count} transaksi
@@ -261,7 +275,7 @@
 			</Card>
 
 			<!-- Rata-rata per Hari -->
-			<Card class="p-3.5 sm:p-4">
+			<Card class="p-3 sm:p-4">
 				<p class="text-[11px] font-bold text-content-muted uppercase tracking-wider mb-0.5">
 					Rata-rata {basisLabel} / Hari
 				</p>
@@ -274,7 +288,7 @@
 			</Card>
 
 			<!-- Transaksi Terbesar -->
-			<Card class="p-3.5 sm:p-4">
+			<Card class="p-3 sm:p-4">
 				<p class="text-[11px] font-bold text-content-muted uppercase tracking-wider mb-0.5">Transaksi Terbesar</p>
 				{#if summary.largest}
 					{@const largest = summary.largest}
@@ -303,125 +317,138 @@
 			</Card>
 		</div>
 
-		<!-- Grid 2 Kolom Desktop: Grafik Tren + Rincian per Kategori -->
-		<div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
-			<!-- Grafik Arus Kas -->
-			<Card class="p-4 sm:p-5">
-				<div class="flex items-center justify-between gap-2 mb-1">
-					<h2 class="text-sm sm:text-base font-black text-content tracking-tight">Tren Arus Kas</h2>
-					<span class="text-xs font-semibold text-content-muted shrink-0">{granularityLabel}</span>
-				</div>
-				{#if filters.granularityAdjusted}
-					<p class="text-[11px] text-content-muted mb-2">
-						Granularitas dinaikkan otomatis karena rentang terlalu panjang untuk grafik harian.
-					</p>
-				{:else}
-					<div class="mb-2"></div>
-				{/if}
-				<CashflowChart data={series} height={160} />
-			</Card>
-
-			<!-- Rincian per Kategori (pengeluaran, atau pemasukan saat filter jenis pemasukan) -->
-			<Card class="p-4 sm:p-5 space-y-3">
-				<div class="flex items-center justify-between gap-2 border-b-2 border-border/10 pb-2">
-					<h2 class="text-sm sm:text-base font-black text-content tracking-tight">
-						{basisLabel} per Kategori
-					</h2>
-					<span class="text-xs font-bold text-content-muted font-mono tabular-nums">
-						{formatRupiah(expenseBasis ? summary.expense : summary.income)}
-					</span>
-				</div>
-				{#if categories.length === 0}
-					<p class="text-xs text-content-muted">
-						Belum ada {basisLabel.toLowerCase()} di kategori mana pun pada periode ini.
-					</p>
-				{:else}
-					<div class="space-y-2.5">
-						{#each categories as cat}
-							{@const pct = Math.round(cat.share * 100)}
-							<div class="space-y-1">
-								<div class="flex items-center justify-between gap-2 text-xs font-bold">
-									{#if cat.categoryId}
-										<a
-											href={txHref({ categoryId: cat.categoryId })}
-											class="inline-flex items-center min-h-[44px] text-content underline decoration-border/40"
-										>
-											<span class="truncate">{cat.name}</span>
-										</a>
-									{:else}
-										<span class="text-content truncate">{cat.name}</span>
-									{/if}
-									<span class="font-mono tabular-nums text-content-muted shrink-0">
-										{formatRupiah(cat.total)} ({pct}%)
-									</span>
-								</div>
-								<div class="w-full h-2 rounded-full bg-surface-muted overflow-hidden border border-border/30">
-									<div
-										class="h-full rounded-full transition-all duration-300 {expenseBasis ? 'bg-expense' : 'bg-income'}"
-										style="width: {pct}%"
-									></div>
-								</div>
-							</div>
-						{/each}
+		<!-- GRAFIK DAN RINCIAN: kelompok analisis, jaraknya lebih lega dari baris angka di atas. -->
+		<div class="space-y-4 sm:space-y-5">
+			<!-- Grid 2 Kolom Desktop: Grafik Tren + Rincian per Kategori -->
+			<div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+				<!-- Grafik Arus Kas -->
+				<Card class="p-4 sm:p-5">
+					<div class="flex items-start justify-between gap-2 mb-2">
+						<div class="min-w-0">
+							<h2 class="text-sm sm:text-base font-black text-content tracking-tight">Tren Arus Kas</h2>
+							<p class="text-[11px] font-semibold text-content-muted">
+								Pemasukan dan pengeluaran {granularityAdjective}
+							</p>
+						</div>
+						<span class="text-xs font-bold text-content-muted shrink-0 text-right max-w-[45%]">
+							{currentRangeLabel}
+						</span>
 					</div>
+					{#if filters.granularityAdjusted}
+						<p class="text-[11px] text-content-muted mb-2">
+							Granularitas dinaikkan otomatis karena rentang terlalu panjang untuk grafik harian.
+						</p>
+					{/if}
+					<CashflowChart
+						data={series}
+						height={160}
+						granularity={filters.granularity}
+						hrefForBucket={txHrefForBucket}
+					/>
+				</Card>
+
+				<!-- Rincian per Kategori (pengeluaran, atau pemasukan saat filter jenis pemasukan) -->
+				<Card class="p-4 sm:p-5 space-y-3">
+					<div class="flex items-center justify-between gap-2 border-b-2 border-border/10 pb-2">
+						<h2 class="text-sm sm:text-base font-black text-content tracking-tight">
+							{basisLabel} per Kategori
+						</h2>
+						<span class="text-xs font-bold text-content-muted font-mono tabular-nums">
+							{formatRupiah(expenseBasis ? summary.expense : summary.income)}
+						</span>
+					</div>
+					{#if categories.length === 0}
+						<p class="text-xs text-content-muted">
+							Belum ada {basisLabel.toLowerCase()} di kategori mana pun pada periode ini.
+						</p>
+					{:else}
+						<div class="space-y-2.5">
+							{#each categories as cat}
+								{@const pct = Math.round(cat.share * 100)}
+								<div class="space-y-1">
+									<div class="flex items-center justify-between gap-2 text-xs font-bold">
+										{#if cat.categoryId}
+											<a
+												href={txHref({ categoryId: cat.categoryId })}
+												class="inline-flex items-center min-h-[44px] text-content underline decoration-border/40"
+											>
+												<span class="truncate">{cat.name}</span>
+											</a>
+										{:else}
+											<span class="text-content truncate">{cat.name}</span>
+										{/if}
+										<span class="font-mono tabular-nums text-content-muted shrink-0">
+											{formatRupiah(cat.total)} ({pct}%)
+										</span>
+									</div>
+									<div class="w-full h-2 rounded-full bg-surface-muted overflow-hidden border border-border/30">
+										<div
+											class="h-full rounded-full transition-all duration-300 {expenseBasis ? 'bg-expense' : 'bg-income'}"
+											style="width: {pct}%"
+										></div>
+									</div>
+								</div>
+							{/each}
+						</div>
+					{/if}
+				</Card>
+			</div>
+
+			<!-- Rincian Arus Kas per Dompet -->
+			<Card class="p-4 sm:p-5 space-y-3">
+				<h2 class="text-sm sm:text-base font-black text-content tracking-tight border-b-2 border-border/10 pb-2">
+					Kinerja per Dompet
+				</h2>
+				{#if wallets.length === 0}
+					<p class="text-xs text-content-muted">Belum ada mutasi dompet di periode ini.</p>
+				{:else}
+					<div class="overflow-x-auto">
+						<table class="w-full text-left text-xs font-sans">
+							<thead>
+								<tr class="border-b-2 border-border/20 text-content-muted uppercase tracking-wider">
+									<th class="py-2 pr-2 font-bold">Dompet</th>
+									<th class="py-2 px-2 text-right font-bold">Masuk</th>
+									<th class="py-2 px-2 text-right font-bold">Keluar</th>
+									<th class="py-2 pl-2 text-right font-bold">Net</th>
+								</tr>
+							</thead>
+							<tbody class="divide-y divide-border/10">
+								{#each wallets as w}
+									<tr>
+										<td class="py-2 pr-2 align-top">
+											<a
+												href={txHref({ walletId: w.walletId, type: '' })}
+												class="inline-flex items-center min-h-[44px] max-w-[140px] sm:max-w-[200px] font-bold text-content underline decoration-border/40"
+											>
+												<span class="truncate">{w.name}</span>
+											</a>
+											{#if w.transferIn > 0 || w.transferOut > 0}
+												<span class="text-[11px] text-content-muted block">
+													{#if w.transferIn > 0}⇄ masuk {formatRupiah(w.transferIn)}{/if}
+													{#if w.transferIn > 0 && w.transferOut > 0} · {/if}
+													{#if w.transferOut > 0}keluar {formatRupiah(w.transferOut)}{/if}
+												</span>
+											{/if}
+											<span class="text-[11px] font-semibold {w.netChange >= 0 ? 'text-income' : 'text-expense'} block">
+												saldo {w.netChange >= 0 ? '+' : '-'}{formatRupiah(Math.abs(w.netChange))}
+											</span>
+										</td>
+										<td class="py-2 px-2 text-right font-mono tabular-nums text-income align-top">+{formatRupiah(w.income)}</td>
+										<td class="py-2 px-2 text-right font-mono tabular-nums text-expense align-top">-{formatRupiah(w.expense)}</td>
+										<td class="py-2 pl-2 text-right font-mono tabular-nums font-bold align-top {w.net >= 0 ? 'text-income' : 'text-expense'}">
+											{w.net >= 0 ? '+' : '-'}{formatRupiah(Math.abs(w.net))}
+										</td>
+									</tr>
+								{/each}
+							</tbody>
+						</table>
+					</div>
+					<p class="text-[11px] text-content-muted">
+						Net = pemasukan - pengeluaran. Baris "saldo" adalah perubahan saldo dompet, termasuk transfer masuk dan keluar.
+					</p>
 				{/if}
 			</Card>
 		</div>
-
-		<!-- Rincian Arus Kas per Dompet -->
-		<Card class="p-4 sm:p-5 space-y-3">
-			<h2 class="text-sm sm:text-base font-black text-content tracking-tight border-b-2 border-border/10 pb-2">
-				Kinerja per Dompet
-			</h2>
-			{#if wallets.length === 0}
-				<p class="text-xs text-content-muted">Belum ada mutasi dompet di periode ini.</p>
-			{:else}
-				<div class="overflow-x-auto">
-					<table class="w-full text-left text-xs font-sans">
-						<thead>
-							<tr class="border-b-2 border-border/20 text-content-muted uppercase tracking-wider">
-								<th class="py-2 pr-2 font-bold">Dompet</th>
-								<th class="py-2 px-2 text-right font-bold">Masuk</th>
-								<th class="py-2 px-2 text-right font-bold">Keluar</th>
-								<th class="py-2 pl-2 text-right font-bold">Net</th>
-							</tr>
-						</thead>
-						<tbody class="divide-y divide-border/10">
-							{#each wallets as w}
-								<tr>
-									<td class="py-2 pr-2 align-top">
-										<a
-											href={txHref({ walletId: w.walletId, type: '' })}
-											class="inline-flex items-center min-h-[44px] max-w-[140px] sm:max-w-[200px] font-bold text-content underline decoration-border/40"
-										>
-											<span class="truncate">{w.name}</span>
-										</a>
-										{#if w.transferIn > 0 || w.transferOut > 0}
-											<span class="text-[11px] text-content-muted block">
-												{#if w.transferIn > 0}⇄ masuk {formatRupiah(w.transferIn)}{/if}
-												{#if w.transferIn > 0 && w.transferOut > 0} · {/if}
-												{#if w.transferOut > 0}keluar {formatRupiah(w.transferOut)}{/if}
-											</span>
-										{/if}
-										<span class="text-[11px] font-semibold {w.netChange >= 0 ? 'text-income' : 'text-expense'} block">
-											saldo {w.netChange >= 0 ? '+' : '-'}{formatRupiah(Math.abs(w.netChange))}
-										</span>
-									</td>
-									<td class="py-2 px-2 text-right font-mono tabular-nums text-income align-top">+{formatRupiah(w.income)}</td>
-									<td class="py-2 px-2 text-right font-mono tabular-nums text-expense align-top">-{formatRupiah(w.expense)}</td>
-									<td class="py-2 pl-2 text-right font-mono tabular-nums font-bold align-top {w.net >= 0 ? 'text-income' : 'text-expense'}">
-										{w.net >= 0 ? '+' : '-'}{formatRupiah(Math.abs(w.net))}
-									</td>
-								</tr>
-							{/each}
-						</tbody>
-					</table>
-				</div>
-				<p class="text-[11px] text-content-muted">
-					Net = pemasukan - pengeluaran. Baris "saldo" adalah perubahan saldo dompet, termasuk transfer masuk dan keluar.
-				</p>
-			{/if}
-		</Card>
 	{/if}
 
 	<!-- Sheet Filter Modal -->
@@ -492,7 +519,7 @@
 					</select>
 					{#if filters.granularityAdjusted}
 						<p class="text-[11px] text-content-muted">
-							Rentang ini terlalu panjang untuk granularitas pilihan, jadi grafik memakai {granularityLabel.toLowerCase()}.
+							Rentang ini terlalu panjang untuk granularitas pilihan, jadi grafik memakai {granularityAdjective}.
 						</p>
 					{/if}
 				</div>

@@ -4,12 +4,22 @@
 	import EmptyState from '$lib/components/EmptyState.svelte';
 	import CashflowChart from '$lib/components/CashflowChart.svelte';
 	import { formatRupiah, formatDateIndo } from '$lib/utils';
+	import { monthKeyShortLabel } from '$lib/shared/dates';
 	import { syncEngine } from '$lib/client/sync/engine.svelte';
 	import { deriveDashboard } from '$lib/client/derive';
 
 	// Whole dashboard renders from the local IndexedDB snapshot (no route load, no fetch).
 	const summary = $derived(
 		deriveDashboard(syncEngine.transactions, syncEngine.wallets, syncEngine.categories)
+	);
+	/** Tren dari derivasi berkunci `YYYY-MM`; grafik menerima label sumbu ringkas + kunci periode. */
+	const trendData = $derived(
+		(summary.sixMonthTrend ?? []).map((row) => ({
+			month: monthKeyShortLabel(row.month),
+			bucket: row.month,
+			income: row.income,
+			expense: row.expense
+		}))
 	);
 	const wallets = $derived(summary.wallets);
 	const totalBalance = $derived(summary.totalBalance);
@@ -44,7 +54,7 @@
 		</div>
 	{:else}
 	<!-- Hero: Total Saldo Bersih -->
-	<Card variant="brand" shadow="lg" class="p-3.5 sm:p-4">
+	<Card variant="brand" shadow="lg" class="p-3 sm:p-4">
 		<div class="flex items-center justify-between gap-3">
 			<div class="min-w-0">
 				<p class="text-[11px] sm:text-xs font-bold uppercase tracking-wider text-brand-foreground/90 leading-tight">
@@ -82,7 +92,7 @@
 	</Card>
 
 	<!-- Grafik Tren 6 Bulan (Custom SVG) -->
-	<Card class="p-3.5 sm:p-4">
+	<Card class="p-3 sm:p-4">
 		<div class="flex items-center justify-between mb-2">
 			<div>
 				<h2 class="text-sm sm:text-base font-black text-content tracking-tight">Tren Arus Kas 6 Bulan</h2>
@@ -95,7 +105,7 @@
 			</a>
 		</div>
 
-		<CashflowChart data={summary.sixMonthTrend ?? []} height={140} />
+		<CashflowChart data={trendData} height={140} granularity="month" />
 	</Card>
 
 	<div class="grid grid-cols-1 lg:grid-cols-3 gap-3">
