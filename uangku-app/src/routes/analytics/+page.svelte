@@ -212,7 +212,7 @@
 				<p class="text-base sm:text-lg font-black font-mono text-income tabular-nums">
 					+{formatRupiah(summary.income)}
 				</p>
-				<a href={txHref({ type: 'income' })} class="mt-1 inline-block text-[11px] font-bold text-brand underline">
+				<a href={txHref({ type: 'income' })} class="mt-1 inline-flex items-center min-h-[44px] text-[11px] font-bold text-brand underline">
 					Lihat transaksi
 				</a>
 			</Card>
@@ -223,7 +223,7 @@
 				<p class="text-base sm:text-lg font-black font-mono text-expense tabular-nums">
 					-{formatRupiah(summary.expense)}
 				</p>
-				<a href={txHref({ type: 'expense' })} class="mt-1 inline-block text-[11px] font-bold text-brand underline">
+				<a href={txHref({ type: 'expense' })} class="mt-1 inline-flex items-center min-h-[44px] text-[11px] font-bold text-brand underline">
 					Lihat transaksi
 				</a>
 			</Card>
@@ -255,7 +255,7 @@
 						tanpa transfer
 					{/if}
 				</p>
-				<a href={txHref()} class="mt-1 inline-block text-[11px] font-bold text-brand underline">
+				<a href={txHref()} class="mt-1 inline-flex items-center min-h-[44px] text-[11px] font-bold text-brand underline">
 					Lihat transaksi
 				</a>
 			</Card>
@@ -293,7 +293,7 @@
 						{#if largest.walletName} · {largest.walletName}{/if}
 					</p>
 					{#if largestHref}
-						<a href={largestHref} class="mt-1 inline-block text-[11px] font-bold text-brand underline">
+						<a href={largestHref} class="mt-1 inline-flex items-center min-h-[44px] text-[11px] font-bold text-brand underline">
 							Lihat transaksi
 						</a>
 					{/if}
@@ -342,8 +342,11 @@
 							<div class="space-y-1">
 								<div class="flex items-center justify-between gap-2 text-xs font-bold">
 									{#if cat.categoryId}
-										<a href={txHref({ categoryId: cat.categoryId })} class="text-content truncate underline decoration-border/40">
-											{cat.name}
+										<a
+											href={txHref({ categoryId: cat.categoryId })}
+											class="inline-flex items-center min-h-[44px] text-content underline decoration-border/40"
+										>
+											<span class="truncate">{cat.name}</span>
 										</a>
 									{:else}
 										<span class="text-content truncate">{cat.name}</span>
@@ -389,9 +392,9 @@
 									<td class="py-2 pr-2 align-top">
 										<a
 											href={txHref({ walletId: w.walletId, type: '' })}
-											class="font-bold text-content underline decoration-border/40 block truncate max-w-[140px] sm:max-w-[200px]"
+											class="inline-flex items-center min-h-[44px] max-w-[140px] sm:max-w-[200px] font-bold text-content underline decoration-border/40"
 										>
-											{w.name}
+											<span class="truncate">{w.name}</span>
 										</a>
 										{#if w.transferIn > 0 || w.transferOut > 0}
 											<span class="text-[11px] text-content-muted block">
