@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512" fill="none">
+  <!-- Maskable / iOS art: the mark sits inside the 80% safe circle on a full-bleed ink
+       square, so an Android launcher mask or iOS rounding never clips the "U". -->
+  <rect width="512" height="512" fill="#0B121D" />
+  <g transform="translate(105.6 105.6) scale(6.4)">
+    <rect x="6" y="6" width="38" height="38" rx="8" fill="#0B121D" />
+    <rect x="3" y="3" width="38" height="38" rx="8" fill="#007B4F" stroke="#0B121D" stroke-width="3" />
+    <path
+      d="M14 13V26C14 30.5 17.5 34 22 34C26.5 34 30 30.5 30 26V13H24.5V25.5C24.5 26.8 23.4 28 22 28C20.6 28 19.5 26.8 19.5 25.5V13H14Z"
+      fill="#FFFFFF"
+      stroke="#0B121D"
+      stroke-width="2"
+      stroke-linejoin="round" />
+  </g>
+</svg>

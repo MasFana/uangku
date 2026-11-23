@@ -5,6 +5,17 @@
 	import Logo from '../lib/components/Logo.svelte';
 	import ThemeToggle from '../lib/components/ThemeToggle.svelte';
 	import { syncEngine } from '$lib/client/sync/engine.svelte';
+	import {
+		SITE_NAME,
+		SITE_TITLE,
+		SITE_DESCRIPTION,
+		OG_IMAGE_PATH,
+		OG_IMAGE_WIDTH,
+		OG_IMAGE_HEIGHT,
+		OG_IMAGE_ALT,
+		absoluteUrl,
+		webApplicationJsonLd
+	} from '$lib/shared/seo';
 
 	interface Props {
 		children: Snippet;
@@ -45,6 +56,13 @@
 		}
 		return 'Uangku';
 	});
+	// Kartu bagikan butuh URL absolut, jadi origin diambil dari permintaan yang sedang dilayani.
+	// canonical selalu menunjuk dirinya sendiri: kedua host (workers.dev dan domain sendiri)
+	// menyajikan halaman yang sama, dan tidak ada yang diklaim sebagai duplikat host lain.
+	const origin = $derived(page.url.origin);
+	const canonical = $derived(absoluteUrl(origin, page.url.pathname));
+	const ogImage = $derived(absoluteUrl(origin, OG_IMAGE_PATH));
+	const jsonLd = $derived(JSON.stringify(webApplicationJsonLd(origin)).replace(/</g, '\\u003c'));
 
 	const desktopNavItems = [
 		{ label: 'Beranda', href: '/' },
@@ -62,9 +80,27 @@
 </script>
 
 <svelte:head>
-	<link rel="icon" type="image/svg+xml" href="/favicon.svg" />
-	<link rel="manifest" href="/manifest.json" />
-	<meta name="theme-color" content="#10b981" />
+	<!-- Ikon, manifest, dan theme-color ada di src/app.html supaya tidak ada dua nilai
+	     yang berbeda untuk satu meta. Di sini hanya tag bagikan yang butuh origin permintaan. -->
+	<link rel="canonical" href={canonical} />
+	<meta property="og:site_name" content={SITE_NAME} />
+	<meta property="og:type" content="website" />
+	<meta property="og:locale" content="id_ID" />
+	<meta property="og:title" content={SITE_TITLE} />
+	<meta property="og:description" content={SITE_DESCRIPTION} />
+	<meta property="og:url" content={canonical} />
+	<meta property="og:image" content={ogImage} />
+	<meta property="og:image:type" content="image/png" />
+	<meta property="og:image:width" content={String(OG_IMAGE_WIDTH)} />
+	<meta property="og:image:height" content={String(OG_IMAGE_HEIGHT)} />
+	<meta property="og:image:alt" content={OG_IMAGE_ALT} />
+	<meta name="twitter:card" content="summary_large_image" />
+	<meta name="twitter:title" content={SITE_TITLE} />
+	<meta name="twitter:description" content={SITE_DESCRIPTION} />
+	<meta name="twitter:image" content={ogImage} />
+	<!-- Svelte tidak menerjemahkan ekspresi di dalam tag <script>, jadi blok ini disisipkan
+	     sebagai HTML mentah. Isinya konstanta, bukan masukan pengguna. -->
+	{@html `<script type="application/ld+json">${jsonLd}</script>`}
 </svelte:head>
 
 <!-- Skip to content for keyboard accessibility (WCAG AA) -->

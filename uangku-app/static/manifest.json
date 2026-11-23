@@ -1,23 +1,59 @@
 {
-  "name": "Uangku - Pencatat Keuangan Pribadi",
+  "id": "/",
+  "name": "Uangku — Pencatat Keuangan Pribadi",
   "short_name": "Uangku",
-  "description": "Aplikasi pencatat keuangan pribadi offline-first super cepat",
+  "description": "Catat pemasukan dan pengeluaran harian. Data tersimpan di perangkat Anda, lalu disinkronkan saat online.",
   "start_url": "/",
+  "scope": "/",
   "display": "standalone",
-  "background_color": "#09090b",
-  "theme_color": "#10b981",
+  "orientation": "any",
+  "background_color": "#0B121D",
+  "theme_color": "#007B4F",
+  "lang": "id",
+  "dir": "ltr",
+  "categories": ["finance", "productivity"],
+  "prefer_related_applications": false,
   "icons": [
     {
       "src": "/icon-192.png",
       "sizes": "192x192",
       "type": "image/png",
-      "purpose": "any maskable"
+      "purpose": "any"
     },
     {
       "src": "/icon-512.png",
       "sizes": "512x512",
       "type": "image/png",
-      "purpose": "any maskable"
+      "purpose": "any"
+    },
+    {
+      "src": "/icon-maskable-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "maskable"
+    },
+    {
+      "src": "/icon-maskable-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Tambah transaksi",
+      "short_name": "Tambah",
+      "url": "/transactions?new=1"
+    },
+    {
+      "name": "Dompet",
+      "short_name": "Dompet",
+      "url": "/wallets"
+    },
+    {
+      "name": "Analisis",
+      "short_name": "Analisis",
+      "url": "/analytics"
     }
   ]
 }

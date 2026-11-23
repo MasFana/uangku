@@ -1,3 +1,14 @@
-# allow crawling everything by default
+# Uangku butuh masuk, jadi halaman aplikasi tidak diindeks. Hanya halaman masuk/daftar
+# dan aset kartu bagikan yang boleh dirayapi, supaya pratinjau tautan selalu tampil.
 User-agent: *
-Disallow:
+Allow: /login
+Allow: /register
+Allow: /manifest.json
+Allow: /favicon.svg
+Allow: /favicon-32.png
+Allow: /apple-touch-icon.png
+Allow: /icon-*.png
+Allow: /og-image.png
+Disallow: /
+
+Sitemap: https://akularping.my.id/sitemap.xml

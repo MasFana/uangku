@@ -23,10 +23,15 @@ const CACHE_NAME = `${CACHE_PREFIX}${version}`;
 /** HTML routes precached at install so an offline hard reload boots the shell. */
 const SHELL = [resolve('/'), resolve('/login')];
 
+/**
+ * Files only crawlers ask for. They must be served, but precaching them at install
+ * would spend install traffic on bytes the app itself never requests.
+ */
+const CRAWLER_ONLY = new Set(['/og-image.png', '/robots.txt', '/sitemap.xml']);
 /** `$app/manifest` entries are `{ path }`, relative to the base path. */
-const ASSET_PATHS = [...assets, ...immutable].map(
-	({ path }) => new URL(path, self.location.href).pathname
-);
+const ASSET_PATHS = [...assets, ...immutable]
+	.map(({ path }) => new URL(path, self.location.href).pathname)
+	.filter((path) => !CRAWLER_ONLY.has(path));
 
 const NAV_TIMEOUT_MS = 2500;
 const SYNC_TAG = 'uangku-outbox-sync';
