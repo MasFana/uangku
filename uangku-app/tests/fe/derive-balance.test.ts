@@ -242,23 +242,57 @@ describe('deriveAnalytics', () => {
 			expense: 400_000,
 			net: 600_000,
 			count: 4,
-			avgPerDay: 13_333,
-			largest: { amount: 1_000_000, occurredAt: '2026-11-01T00:00:00.000Z', note: null, categoryName: 'Kategori c2' }
+			transferCount: 1,
+			// 400.000 pengeluaran dibagi 15 hari (1-15 Nov, sampai hari ini).
+			avgPerDay: 26_667,
+			avgPerDayBasis: 'expense',
+			largest: {
+				amount: 1_000_000,
+				type: 'income',
+				occurredAt: '2026-11-01T00:00:00.000Z',
+				note: null,
+				categoryName: 'Kategori c2',
+				walletId: 'w1',
+				walletName: 'Dompet w1'
+			}
 		});
 		expect(result.series[0]).toEqual({ bucket: '2026-11-01', label: '1/11', month: '1/11', income: 1_000_000, expense: 300_000 });
 		expect(result.series[1]).toEqual({ bucket: '2026-11-02', label: '2/11', month: '2/11', income: 0, expense: 100_000 });
 		expect(result.series).toHaveLength(30);
+		// Kartu kategori memakai basis pengeluaran: pemasukan tidak boleh ikut.
+		expect(result.filters.categoriesBasis).toBe('expense');
 		expect(result.categories).toEqual([
-			{ categoryId: 'c2', name: 'Kategori c2', total: 1_000_000, count: 1, color: null, share: 0.7143 },
-			{ categoryId: 'c1', name: 'Makan', total: 400_000, count: 2, color: '#111111', share: 0.2857 }
+			{ categoryId: 'c1', name: 'Makan', total: 400_000, count: 2, color: '#111111', share: 1 }
 		]);
 		expect(result.wallets).toEqual([
-			{ walletId: 'w1', name: 'Dompet w1', income: 1_000_000, expense: 300_000, net: 700_000 },
-			{ walletId: 'w2', name: 'Dompet w2', income: 0, expense: 100_000, net: -100_000 }
+			{
+				walletId: 'w1',
+				name: 'Dompet w1',
+				income: 1_000_000,
+				expense: 300_000,
+				transferIn: 0,
+				transferOut: 50_000,
+				net: 700_000,
+				netChange: 650_000,
+				count: 3
+			},
+			{
+				walletId: 'w2',
+				name: 'Dompet w2',
+				income: 0,
+				expense: 100_000,
+				transferIn: 50_000,
+				transferOut: 0,
+				net: -100_000,
+				netChange: -50_000,
+				count: 2
+			}
 		]);
+		// Dompet arsip tetap tersedia sebagai opsi filter (riwayatnya masih bisa dilihat).
 		expect(result.options.wallets).toEqual([
-			{ id: 'w1', name: 'Dompet w1' },
-			{ id: 'w2', name: 'Dompet w2' }
+			{ id: 'w1', name: 'Dompet w1', archived: false },
+			{ id: 'w2', name: 'Dompet w2', archived: false },
+			{ id: 'w3', name: 'Dompet w3', archived: true }
 		]);
 		expect(result.options.categories.map((c) => c.id)).toEqual(['c2', 'c1']);
 		expect(result.range).toEqual({ from: '2026-11-01', to: '2026-11-30' });
@@ -266,7 +300,16 @@ describe('deriveAnalytics', () => {
 
 	it('returns zeroed totals, buckets and a null largest for an empty period', () => {
 		const result = deriveAnalytics([], wallets, categories, { range: 'custom', from: '2026-01-01', to: '2026-01-03' }, NOW);
-		expect(result.summary).toEqual({ income: 0, expense: 0, net: 0, count: 0, avgPerDay: 0, largest: null });
+		expect(result.summary).toEqual({
+			income: 0,
+			expense: 0,
+			net: 0,
+			count: 0,
+			transferCount: 0,
+			avgPerDay: 0,
+			avgPerDayBasis: 'expense',
+			largest: null
+		});
 		expect(result.series).toHaveLength(3);
 		expect(result.series.every((s) => s.income === 0 && s.expense === 0)).toBe(true);
 		expect(result.categories).toEqual([]);

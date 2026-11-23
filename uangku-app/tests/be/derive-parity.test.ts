@@ -10,8 +10,6 @@ import {
 	filterTransactions,
 	resolvePeriodBounds
 } from '../../src/lib/client/derive';
-import { resolveTransactionPeriod } from '../../src/lib/server/period';
-import { generateBuckets, getBucketKeyForDate, resolveAnalyticsRange, resolveGranularity } from '../../src/lib/server/stats';
 
 /**
  * Contract test: the client-side derivations must equal what D1 computes for the same rows.
@@ -322,57 +320,112 @@ function sqlDayTotals(from: string, to: string, filter: SqlFilter = {}): Map<str
 function sqlCategoryTotals(
 	from: string,
 	to: string,
-	filter: SqlFilter = {}
+	filter: SqlFilter = {},
+	basis: 'income' | 'expense' = 'expense'
 ): Map<string, { total: number; count: number }> {
 	const params: SqlParam[] = [];
 	const where = whereFor(from, to, filter, params);
+	params.push(basis);
 	const rows = db
 		.prepare(
 			`SELECT COALESCE(category_id, '') AS category_id, SUM(amount) AS total, COUNT(*) AS n
-			 FROM transactions WHERE ${where} AND type != 'transfer' GROUP BY COALESCE(category_id, '')`
+			 FROM transactions WHERE ${where} AND type = ? GROUP BY COALESCE(category_id, '')`
 		)
 		.all(...params) as Array<{ category_id: string; total: number; n: number }>;
 	return new Map(rows.map((r) => [r.category_id, { total: Number(r.total), count: Number(r.n) }]));
 }
 
+type WalletAgg = { income: number; expense: number; transferIn: number; transferOut: number; count: number };
 function sqlWalletTotals(
 	from: string,
 	to: string,
 	filter: SqlFilter = {}
-): Map<string, { income: number; expense: number }> {
+): Map<string, WalletAgg> {
 	const params: SqlParam[] = [];
 	const where = whereFor(from, to, filter, params);
-	const rows = db
+	const result = new Map<string, WalletAgg>();
+	const ensure = (walletId: string): WalletAgg => {
+		const existing = result.get(walletId);
+		if (existing) return existing;
+		const created: WalletAgg = { income: 0, expense: 0, transferIn: 0, transferOut: 0, count: 0 };
+		result.set(walletId, created);
+		return created;
+	};
+	// Keluar: setiap baris menyentuh dompet sumbernya, termasuk transfer keluar.
+	const outRows = db
+		.prepare(`SELECT wallet_id, type, SUM(amount) AS amount, COUNT(*) AS n FROM transactions WHERE ${where} GROUP BY wallet_id, type`)
+		.all(...params) as Array<{ wallet_id: string; type: string; amount: number; n: number }>;
+	for (const row of outRows) {
+		const agg = ensure(row.wallet_id);
+		const amount = Number(row.amount);
+		agg.count += Number(row.n);
+		if (row.type === 'income') agg.income += amount;
+		else if (row.type === 'expense') agg.expense += amount;
+		else agg.transferOut += amount;
+	}
+	// Masuk: transfer hanya menyentuh dompet tujuan lewat transfer_wallet_id.
+	const inRows = db
 		.prepare(
-			`SELECT wallet_id,
-			        COALESCE(SUM(CASE WHEN type = 'income' THEN amount ELSE 0 END), 0) AS income,
-			        COALESCE(SUM(CASE WHEN type = 'expense' THEN amount ELSE 0 END), 0) AS expense
-			 FROM transactions WHERE ${where} AND type != 'transfer' GROUP BY wallet_id`
+			`SELECT transfer_wallet_id AS wallet_id, SUM(amount) AS amount, COUNT(*) AS n
+			 FROM transactions WHERE ${where} AND type = 'transfer' AND transfer_wallet_id IS NOT NULL
+			 GROUP BY transfer_wallet_id`
 		)
-		.all(...params) as Array<{ wallet_id: string; income: number; expense: number }>;
-	return new Map(rows.map((r) => [r.wallet_id, { income: Number(r.income), expense: Number(r.expense) }]));
+		.all(...params) as Array<{ wallet_id: string; amount: number; n: number }>;
+	for (const row of inRows) {
+		const agg = ensure(row.wallet_id);
+		agg.transferIn += Number(row.amount);
+		agg.count += Number(row.n);
+	}
+	return result;
+}
+function sqlTransferCount(from: string, to: string, filter: SqlFilter = {}): number {
+	const params: SqlParam[] = [];
+	const where = whereFor(from, to, filter, params);
+	const row = db
+		.prepare(`SELECT COUNT(*) AS n FROM transactions WHERE ${where} AND type = 'transfer'`)
+		.get(...params) as { n: number };
+	return Number(row.n);
 }
 
 function sqlLargest(
 	from: string,
 	to: string,
 	filter: SqlFilter = {}
-): { amount: number; occurredAt: string; note: string | null; categoryId: string | null } | null {
+): {
+	amount: number;
+	type: 'income' | 'expense';
+	occurredAt: string;
+	note: string | null;
+	categoryId: string | null;
+	walletId: string;
+} | null {
 	const params: SqlParam[] = [];
 	const where = whereFor(from, to, filter, params);
 	const row = db
 		.prepare(
-			`SELECT amount, occurred_at, note, category_id FROM transactions WHERE ${where} AND type != 'transfer'
+			`SELECT amount, type, occurred_at, note, category_id, wallet_id FROM transactions
+			 WHERE ${where} AND type != 'transfer' AND amount > 0
 			 ORDER BY amount DESC, occurred_at ASC, id ASC LIMIT 1`
 		)
-		.get(...params) as { amount: number; occurred_at: string; note: string | null; category_id: string | null } | undefined;
+		.get(...params) as
+		| {
+				amount: number;
+				type: 'income' | 'expense';
+				occurred_at: string;
+				note: string | null;
+				category_id: string | null;
+				wallet_id: string;
+		  }
+		| undefined;
 	return row
 		? {
-			amount: Number(row.amount),
-			occurredAt: row.occurred_at,
-			note: row.note,
-			categoryId: row.category_id
-		}
+				amount: Number(row.amount),
+				type: row.type,
+				occurredAt: row.occurred_at,
+				note: row.note,
+				categoryId: row.category_id,
+				walletId: row.wallet_id
+			}
 		: null;
 }
 
@@ -472,33 +525,6 @@ describe('derive-parity: wallet balances vs D1', () => {
 	});
 });
 
-describe('derive-parity: period boundaries vs server resolver', () => {
-	it('resolves every period branch exactly like resolveTransactionPeriod', () => {
-		const cases: Array<[string, string | null, string | null]> = [
-			['2026-11', null, null],
-			['2026-02', null, null], // 28-day month
-			['2024-02', null, null], // leap year
-			['2026-12', null, null],
-			['all', null, null],
-			['bogus', null, null],
-			['1969-05', null, null], // out of range -> current month
-			['custom', '2026-11-05', '2026-11-05'],
-			['custom', '2026-11-30', '2026-11-01'], // inverted
-			['custom', 'nope', '2026-10-03'], // single valid bound
-			['custom', 'nope', 'nope'] // fallback current month
-		];
-
-		for (const [period, startDate, endDate] of cases) {
-			const server = resolveTransactionPeriod(period, startDate, endDate, NOW);
-			expect(resolvePeriodBounds(period, startDate, endDate, NOW)).toEqual({
-				period: server.period,
-				startDate: server.startDate,
-				endDate: server.endDate
-			});
-		}
-	});
-});
-
 describe('derive-parity: filterTransactions vs SQL list query', () => {
 	it('matches SQL ids, ordering and totals for several filters', () => {
 		const cases: Array<{ period: string; filter: Parameters<typeof filterTransactions>[1] }> = [
@@ -556,93 +582,194 @@ describe('derive-parity: filterTransactions vs SQL list query', () => {
 	});
 });
 
+/** Tanggal kalender UTC hari ini di Jakarta untuk `NOW` (2026-11-15T09:30Z + 7 jam). */
+const TODAY_YMD = '2026-11-15';
+
+function isoDay(d: Date): string {
+	return d.toISOString().slice(0, 10);
+}
+function addDays(ymd: string, days: number): string {
+	const d = new Date(`${ymd}T00:00:00.000Z`);
+	d.setUTCDate(d.getUTCDate() + days);
+	return isoDay(d);
+}
+function dayCount(fromYmd: string, toYmd: string): number {
+	const from = new Date(`${fromYmd}T00:00:00.000Z`).getTime();
+	const to = new Date(`${toYmd}T00:00:00.000Z`).getTime();
+	return Math.round((to - from) / 86400000) + 1;
+}
+function mondayOf(ymd: string): string {
+	const d = new Date(`${ymd}T00:00:00.000Z`);
+	const day = d.getUTCDay();
+	return addDays(ymd, day === 0 ? -6 : 1 - day);
+}
+/** Kunci bucket yang diharapkan, dihitung di test (bukan oleh kode aplikasi). */
+function expectedBuckets(fromYmd: string, toYmd: string, granularity: 'day' | 'week' | 'month'): string[] {
+	const keys: string[] = [];
+	if (granularity === 'day') {
+		for (let ymd = fromYmd; ymd <= toYmd; ymd = addDays(ymd, 1)) keys.push(ymd);
+		return keys;
+	}
+	if (granularity === 'week') {
+		for (let ymd = mondayOf(fromYmd); ymd <= toYmd; ymd = addDays(ymd, 7)) keys.push(ymd);
+		return keys;
+	}
+	let [y, m] = [Number(fromYmd.slice(0, 4)), Number(fromYmd.slice(5, 7))];
+	const [endY, endM] = [Number(toYmd.slice(0, 4)), Number(toYmd.slice(5, 7))];
+	while (y < endY || (y === endY && m <= endM)) {
+		keys.push(`${y}-${String(m).padStart(2, '0')}`);
+		m++;
+		if (m > 12) {
+			m = 1;
+			y++;
+		}
+	}
+	return keys;
+}
+function bucketKeyFor(ymd: string, granularity: 'day' | 'week' | 'month'): string {
+	if (granularity === 'day') return ymd;
+	if (granularity === 'week') return mondayOf(ymd);
+	return ymd.slice(0, 7);
+}
+const byWalletId = (a: { walletId: string }, b: { walletId: string }) => (a.walletId < b.walletId ? -1 : 1);
+
 describe('derive-parity: deriveAnalytics vs SQL aggregates', () => {
-	const queries: Array<{ label: string; query: Parameters<typeof deriveAnalytics>[3]; granularity: string }> = [
-		{ label: 'month (day series)', query: { range: 'month' }, granularity: 'day' },
-		{ label: 'week', query: { range: 'week' }, granularity: 'day' },
-		{ label: 'year (month series)', query: { range: 'year' }, granularity: 'month' },
-		{ label: 'all (month series)', query: { range: 'all' }, granularity: 'month' },
+	type Case = {
+		label: string;
+		query: Parameters<typeof deriveAnalytics>[3];
+		from: string;
+		to: string;
+		granularity: 'day' | 'week' | 'month';
+		adjusted: boolean;
+		prevLabel: string | null;
+		/** Jendela pembanding eksplisit; preset memakai kalender penuh, bukan panjang yang sama. */
+		prev?: { from: string; to: string };
+	};
+	const cases: Case[] = [
+		{ label: 'month (day series)', query: { range: 'month' }, from: '2026-11-01', to: '2026-11-30', granularity: 'day', adjusted: false, prevLabel: 'bulan lalu', prev: { from: '2026-10-01', to: '2026-10-31' } },
+		{ label: 'week (day series)', query: { range: 'week' }, from: '2026-11-09', to: '2026-11-15', granularity: 'day', adjusted: false, prevLabel: 'minggu lalu', prev: { from: '2026-11-02', to: '2026-11-08' } },
+		{ label: 'year (month series)', query: { range: 'year' }, from: '2026-01-01', to: '2026-12-31', granularity: 'month', adjusted: false, prevLabel: 'tahun lalu', prev: { from: '2025-01-01', to: '2025-12-31' } },
 		{
-			label: 'custom + wallet filter',
+			label: 'custom + wallet filter (92 hari -> mingguan)',
 			query: { range: 'custom', from: '2026-06-01', to: '2026-08-31', walletId: 'w1' },
-			granularity: 'week'
+			from: '2026-06-01',
+			to: '2026-08-31',
+			granularity: 'week',
+			adjusted: false,
+			prevLabel: 'periode sebelumnya'
 		},
-		{ label: 'custom + category filter', query: { range: 'custom', from: '2026-05-01', to: '2026-11-30', categoryId: 'c2' }, granularity: 'day' },
-		{ label: 'custom + type filter', query: { range: 'custom', from: '2026-05-01', to: '2026-11-30', type: 'expense' }, granularity: 'month' }
+		{
+			label: 'custom + category filter (214 hari -> bulanan)',
+			query: { range: 'custom', from: '2026-05-01', to: '2026-11-30', categoryId: 'c2' },
+			from: '2026-05-01',
+			to: '2026-11-30',
+			granularity: 'month',
+			adjusted: false,
+			prevLabel: 'periode sebelumnya'
+		},
+		{
+			label: 'custom + jenis pengeluaran',
+			query: { range: 'custom', from: '2026-05-01', to: '2026-11-30', type: 'expense' },
+			from: '2026-05-01',
+			to: '2026-11-30',
+			granularity: 'month',
+			adjusted: false,
+			prevLabel: 'periode sebelumnya'
+		},
+		{
+			label: 'custom + jenis pemasukan (kartu kategori ikut pemasukan)',
+			query: { range: 'custom', from: '2026-09-01', to: '2026-10-31', type: 'income' },
+			from: '2026-09-01',
+			to: '2026-10-31',
+			granularity: 'week',
+			adjusted: false,
+			prevLabel: 'periode sebelumnya'
+		},
+		{
+			label: 'custom harian yang dinaikkan otomatis',
+			query: { range: 'custom', from: '2026-05-01', to: '2026-11-30', granularity: 'day' },
+			from: '2026-05-01',
+			to: '2026-11-30',
+			granularity: 'week',
+			adjusted: true,
+			prevLabel: 'periode sebelumnya'
+		}
 	];
 
-	it.each(queries)('matches totals, series, breakdowns, largest and previous for $label', ({ query }) => {
+	function assertParity(testCase: Case) {
+		const { query, from: fromYmd, to: toYmd, granularity, adjusted } = testCase;
+		const from = `${fromYmd}T00:00:00.000Z`;
+		const to = `${toYmd}T23:59:59.999Z`;
 		const result = deriveAnalytics(txDtos, walletDtos, categoryDtos, query, NOW);
-
-		// Range resolution must equal the server's resolver (single source of truth).
-		const earliest = txDtos
-			.filter((t) => t.deletedAt == null)
-			.map((t) => t.occurredAt)
-			.sort()[0];
-		const serverRange = resolveAnalyticsRange(query.range, query.from, query.to, query.range === 'all' ? earliest : null, NOW);
 		const filters: SqlFilter = {
 			walletId: query.walletId?.trim() || undefined,
 			categoryId: query.categoryId?.trim() || undefined,
 			type: query.type === 'income' || query.type === 'expense' ? query.type : undefined
 		};
-		const serverGranularity = resolveGranularity(serverRange.range, query.granularity, serverRange.daysCount);
+		const basis: 'income' | 'expense' = query.type === 'income' ? 'income' : 'expense';
 
-		expect(result.filters.range).toBe(serverRange.range);
-		expect(result.filters.from).toBe(serverRange.fromDateStr);
-		expect(result.filters.to).toBe(serverRange.toDateStr);
-		expect(result.filters.granularity).toBe(serverGranularity);
-		expect(result.range).toEqual({ from: serverRange.fromDateStr, to: serverRange.toDateStr });
+		// Rentang dan granularitas
+		expect(result.range).toEqual({ from: fromYmd, to: toYmd });
+		expect(result.filters.startDate).toBe(fromYmd);
+		expect(result.filters.endDate).toBe(toYmd);
+		expect(result.filters.granularity).toBe(granularity);
+		expect(result.filters.granularityAdjusted).toBe(adjusted);
 		expect(result.filters.type).toBe(filters.type ?? 'all');
+		expect(result.filters.categoriesBasis).toBe(basis);
 
-		// Summary
-		const totals = sqlTotals(serverRange.from, serverRange.to, filters);
+		// Pembagi rata-rata berhenti di hari ini, bukan di akhir periode berjalan.
+		const elapsedEnd = toYmd > TODAY_YMD ? TODAY_YMD : toYmd;
+		const daysElapsed = dayCount(fromYmd, elapsedEnd);
+		expect(result.filters.daysCount).toBe(daysElapsed);
+		expect(result.filters.label).toBeTruthy();
+
+		// Ringkasan
+		const totals = sqlTotals(from, to, filters);
 		expect(result.summary.income).toBe(totals.income);
 		expect(result.summary.expense).toBe(totals.expense);
 		expect(result.summary.net).toBe(totals.income - totals.expense);
-		expect(result.summary.count).toBe(sqlCount(serverRange.from, serverRange.to, filters));
-		expect(result.summary.avgPerDay).toBe(Math.round(totals.expense / Math.max(1, serverRange.daysCount)));
+		expect(result.summary.count).toBe(sqlCount(from, to, filters));
+		expect(result.summary.transferCount).toBe(sqlTransferCount(from, to, filters));
+		expect(result.summary.avgPerDayBasis).toBe(basis);
+		expect(result.summary.avgPerDay).toBe(
+			Math.round((basis === 'income' ? totals.income : totals.expense) / daysElapsed)
+		);
 
-		const largest = sqlLargest(serverRange.from, serverRange.to, filters);
+		// Transaksi terbesar, termasuk jenis dan dompetnya
+		const largest = sqlLargest(from, to, filters);
 		if (!largest) {
 			expect(result.summary.largest).toBeNull();
 		} else {
 			const category = largest.categoryId ? categoryDtos.find((c) => c.id === largest.categoryId) : undefined;
 			expect(result.summary.largest).toEqual({
 				amount: largest.amount,
+				type: largest.type,
 				occurredAt: largest.occurredAt,
 				note: largest.note,
-				categoryName: category?.name ?? null
+				categoryName: category?.name ?? null,
+				walletId: largest.walletId,
+				walletName: walletDtos.find((w) => w.id === largest.walletId)?.name ?? null
 			});
 		}
 
-		// Series: SQL day buckets re-bucketed with the server's own key resolver.
-		const expectedSeries = new Map<string, { income: number; expense: number }>();
-		for (const bucket of generateBuckets(serverRange.from, serverRange.to, serverGranularity)) {
-			expectedSeries.set(bucket.bucket, { income: 0, expense: 0 });
-		}
-		for (const [ymd, dayTotal] of sqlDayTotals(serverRange.from, serverRange.to, filters)) {
-			const key = getBucketKeyForDate(`${ymd}T00:00:00.000Z`, serverGranularity);
-			const bucket = expectedSeries.get(key);
-			if (!bucket) throw new Error(`bucket missing for ${ymd} (${key})`);
+		// Seri: bucket dan jumlahnya harus sama dengan agregat SQL harian yang dikelompokkan ulang
+		const expectedKeys = expectedBuckets(fromYmd, toYmd, granularity);
+		expect(result.series.map((s) => s.bucket)).toEqual(expectedKeys);
+		const expectedSeries = new Map(expectedKeys.map((key) => [key, { income: 0, expense: 0 }]));
+		for (const [ymd, dayTotal] of sqlDayTotals(from, to, filters)) {
+			const bucket = expectedSeries.get(bucketKeyFor(ymd, granularity));
+			if (!bucket) throw new Error(`bucket ${bucketKeyFor(ymd, granularity)} tidak ada untuk ${ymd}`);
 			bucket.income += dayTotal.income;
 			bucket.expense += dayTotal.expense;
 		}
-
-		expect(result.series.map((s) => s.bucket)).toEqual(
-			generateBuckets(serverRange.from, serverRange.to, serverGranularity).map((b) => b.bucket)
-		);
-		expect(result.series.map((s) => s.label)).toEqual(
-			generateBuckets(serverRange.from, serverRange.to, serverGranularity).map((b) => b.label)
-		);
 		expect(new Map(result.series.map((s) => [s.bucket, { income: s.income, expense: s.expense }]))).toEqual(
 			expectedSeries
 		);
 
-		// Category breakdown
-		const denominator =
-			filters.type === 'income' ? totals.income : filters.type === 'expense' ? totals.expense : totals.income + totals.expense;
+		// Rincian kategori memakai basis yang sama dengan judul kartu
+		const denominator = basis === 'income' ? totals.income : totals.expense;
 		const expectedCategories = sortedByTotalDesc(
-			Array.from(sqlCategoryTotals(serverRange.from, serverRange.to, filters).entries()).map(([categoryId, agg]) => {
+			Array.from(sqlCategoryTotals(from, to, filters, basis).entries()).map(([categoryId, agg]) => {
 				const category = categoryId ? categoryDtos.find((c) => c.id === categoryId) : undefined;
 				return {
 					categoryId: categoryId || null,
@@ -656,56 +783,88 @@ describe('derive-parity: deriveAnalytics vs SQL aggregates', () => {
 		);
 		expect(sortedByTotalDesc(result.categories.map((c) => ({ ...c })))).toEqual(expectedCategories);
 
-		// Wallet breakdown
-		const expectedWallets = Array.from(sqlWalletTotals(serverRange.from, serverRange.to, filters).entries()).map(
-			([walletId, agg]) => ({
-				walletId,
-				name: walletDtos.find((w) => w.id === walletId)?.name ?? 'Dompet',
-				income: agg.income,
-				expense: agg.expense,
-				net: agg.income - agg.expense
-			})
-		);
-		expect(result.wallets.slice().sort((a, b) => (a.walletId < b.walletId ? -1 : 1))).toEqual(
-			expectedWallets.sort((a, b) => (a.walletId < b.walletId ? -1 : 1))
-		);
+		// Rincian dompet: transfer dihitung di kedua sisi, net tetap pemasukan - pengeluaran
+		const expectedWallets = Array.from(sqlWalletTotals(from, to, filters).entries()).map(([walletId, agg]) => ({
+			walletId,
+			name: walletDtos.find((w) => w.id === walletId)?.name ?? 'Dompet',
+			income: agg.income,
+			expense: agg.expense,
+			transferIn: agg.transferIn,
+			transferOut: agg.transferOut,
+			net: agg.income - agg.expense,
+			netChange: agg.income - agg.expense + agg.transferIn - agg.transferOut,
+			count: agg.count
+		}));
+		expect(result.wallets.slice().sort(byWalletId)).toEqual(expectedWallets.sort(byWalletId));
 
-		// Previous period
-		if (!serverRange.previous) {
+		// Periode pembanding
+		if (!testCase.prevLabel) {
 			expect(result.previous).toBeNull();
 		} else {
-			const prevTotals = sqlTotals(serverRange.previous.from, serverRange.previous.to, filters);
-			expect(result.previous).toEqual({
-				from: serverRange.previous.from,
-				to: serverRange.previous.to,
-				income: prevTotals.income,
-				expense: prevTotals.expense,
-				net: prevTotals.income - prevTotals.expense
-			});
+			const prevTo = testCase.prev ? testCase.prev.to : addDays(fromYmd, -1);
+			const prevFrom = testCase.prev
+				? testCase.prev.from
+				: addDays(prevTo, -(dayCount(fromYmd, toYmd) - 1));
+			const prevTotals = sqlTotals(`${prevFrom}T00:00:00.000Z`, `${prevTo}T23:59:59.999Z`, filters);
+			expect(result.previous?.from).toBe(`${prevFrom}T00:00:00.000Z`);
+			expect(result.previous?.to).toBe(`${prevTo}T23:59:59.999Z`);
+			expect(result.previous?.label).toBe(testCase.prevLabel);
+			expect(result.previous?.income).toBe(prevTotals.income);
+			expect(result.previous?.expense).toBe(prevTotals.expense);
+			expect(result.previous?.net).toBe(prevTotals.income - prevTotals.expense);
 		}
 
-		// Filter options: active wallets and categories only
+		// Opsi filter: dompet arsip tetap ada supaya riwayatnya bisa dipilih
 		expect(result.options.wallets).toEqual(
-			sortedByName(walletDtos.filter((w) => !w.archived && w.deletedAt == null).map((w) => ({ id: w.id, name: w.name })))
+			sortedByName(
+				walletDtos
+					.filter((w) => w.deletedAt == null)
+					.map((w) => ({ id: w.id, name: w.name, archived: w.archived }))
+			)
 		);
 		expect(result.options.categories).toEqual(
 			sortedByName(
 				categoryDtos
-					.filter((c) => !c.archived && c.deletedAt == null)
-					.map((c) => ({ id: c.id, name: c.name, kind: c.kind }))
+					.filter((c) => c.deletedAt == null)
+					.map((c) => ({ id: c.id, name: c.name, kind: c.kind, archived: c.archived }))
 			)
 		);
+	}
+
+	it.each(cases)('matches totals, series, breakdowns, largest and previous for $label', (testCase) => {
+		assertParity(testCase);
 	});
 
-	it('labels the month preset like the server range label', () => {
+	it("matches totals for 'all' (mulai dari transaksi pertama yang lolos filter)", () => {
+		const earliestRow = db
+			.prepare('SELECT MIN(occurred_at) AS earliest FROM transactions WHERE user_id = ? AND deleted_at IS NULL')
+			.get(USER_ID) as { earliest: string };
+		const latestRow = db
+			.prepare('SELECT MAX(occurred_at) AS latest FROM transactions WHERE user_id = ? AND deleted_at IS NULL')
+			.get(USER_ID) as { latest: string };
+		const fromYmd = earliestRow.earliest.slice(0, 10);
+		const latestYmd = latestRow.latest.slice(0, 10);
+		const toYmd = latestYmd > TODAY_YMD ? latestYmd : TODAY_YMD;
+		assertParity({
+			label: 'all',
+			query: { range: 'all', granularity: 'month' },
+			from: fromYmd,
+			to: toYmd,
+			granularity: 'month',
+			adjusted: false,
+			prevLabel: null
+		});
+	});
+
+	it('labels the month preset in Indonesian', () => {
 		const result = deriveAnalytics(txDtos, walletDtos, categoryDtos, { range: 'month' }, NOW);
 		expect(result.filters.label).toBe('November 2026');
 		expect(result.filters.period).toBe('month');
 		expect(result.filters.startDate).toBe('2026-11-01');
-		expect(result.filters.endDate).toBe('2026-11-15');
+		// Batas kalender penuh: transaksi bertanggal akhir bulan tetap masuk.
+		expect(result.filters.endDate).toBe('2026-11-30');
 	});
 });
-
 describe('derive-parity: deriveDashboard vs SQL aggregates', () => {
 	it('matches total balance, current month, recent rows, category breakdown and 6-month trend', () => {
 		const summary = deriveDashboard(txDtos, walletDtos, categoryDtos, NOW);

@@ -1,4 +1,5 @@
 import type { TransactionDTO, TransactionType } from '$lib/shared/sync-contract';
+import { lastUtcDayOfMonth, pad2, parseUtcDateString, todayInJakarta } from '$lib/shared/dates';
 
 export interface TransactionListFilter {
 	/** 'YYYY-MM' | 'all' | 'custom' (mirrors the server query param). */
@@ -31,22 +32,16 @@ export interface ResolvedPeriodBounds {
 	endDate: string;
 }
 
-const DATE_ONLY = /^\d{4}-\d{2}-\d{2}$/;
 const YEAR_MONTH = /^\d{4}-\d{2}$/;
-
-function pad2(n: number): string {
-	return String(n).padStart(2, '0');
-}
-
-function lastUtcDayOfMonth(year: number, monthIndex: number): number {
-	return new Date(Date.UTC(year, monthIndex + 1, 0)).getUTCDate();
+/** Tanggal harus ada di kalender: `2026-02-31` dan `2026-13-99` ditolak. */
+function isValidDateParam(value: string): boolean {
+	return parseUtcDateString(value) !== null;
 }
 
 /**
- * Resolves period bounds with the same boundaries as `$lib/server/period.ts`
- * (`resolveTransactionPeriod`). Re-implemented here because SvelteKit forbids importing
- * `$lib/server/*` from client code; tests/be/derive-parity.test.ts asserts equality with
- * the server resolver so the two cannot drift.
+ * Resolves period bounds for the transaction list. This is the only implementation: the
+ * server no longer resolves periods, so the bounds live on the client.
+ * The current month comes from the Jakarta calendar (`todayInJakarta`).
  */
 export function resolvePeriodBounds(
 	periodParam?: string | null,
@@ -55,8 +50,10 @@ export function resolvePeriodBounds(
 	now: Date = new Date()
 ): ResolvedPeriodBounds {
 	const rawPeriod = (periodParam ?? '').trim();
-	const nowYear = now.getUTCFullYear();
-	const nowMonth = now.getUTCMonth();
+	// Bulan berjalan ditentukan kalender WIB: pukul 06:00 WIB tanggal 1 sudah bulan baru.
+	const today = todayInJakarta(now);
+	const nowYear = today.getUTCFullYear();
+	const nowMonth = today.getUTCMonth();
 
 	if (rawPeriod === 'all') {
 		return { period: 'all', startDate: '', endDate: '' };
@@ -65,8 +62,8 @@ export function resolvePeriodBounds(
 	if (rawPeriod === 'custom') {
 		let start = (startDateParam ?? '').trim();
 		let end = (endDateParam ?? '').trim();
-		const validStart = DATE_ONLY.test(start);
-		const validEnd = DATE_ONLY.test(end);
+		const validStart = isValidDateParam(start);
+		const validEnd = isValidDateParam(end);
 
 		if (!validStart && !validEnd) {
 			start = `${nowYear}-${pad2(nowMonth + 1)}-01`;
@@ -106,7 +103,7 @@ export function resolvePeriodBounds(
 
 /**
  * Filters/sorts/pages local transactions with the server's list semantics
- * (`TxRepo.list` + `resolveTransactionPeriod`): soft-deleted rows excluded, bounds compared
+ * (`TxRepo.list`): soft-deleted rows excluded, bounds compared
  * as ISO strings, order `occurredAt DESC, id DESC`, page size clamped to 1..100.
  */
 export function filterTransactions(

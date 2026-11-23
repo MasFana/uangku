@@ -13,6 +13,7 @@
 	import { currentUrl } from '$lib/client/url-state';
 	import { deriveWalletBalances } from '$lib/client/derive/balances';
 	import { filterTransactions, resolvePeriodBounds } from '$lib/client/derive/filters';
+	import { todayInJakarta, toUtcDateString } from '$lib/shared/dates';
 	import type { TransactionDTO } from '$lib/shared/sync-contract';
 
 	// Rendered entirely from IndexedDB via the frozen sync engine — no server load.
@@ -73,7 +74,7 @@
 		const formEl = e.currentTarget as HTMLFormElement;
 		const fd = new FormData(formEl);
 		const amount = Math.trunc(Math.abs(parseInt(String(fd.get('amount') ?? '0'), 10) || 0));
-		const date = String(fd.get('date') ?? '') || new Date().toISOString().slice(0, 10);
+		const date = String(fd.get('date') ?? '') || todayIsoWib();
 		const note = String(fd.get('note') ?? '').trim() || null;
 		const occurredAt = occurredAtFrom(date);
 		try {
@@ -263,8 +264,7 @@
 		return `/transactions?${params.toString()}`;
 	}
 
-	// ponytail: label/nav twin of `$lib/server/period.ts`; SvelteKit blocks
-	// `$lib/server/*` on the client. Bounds come from derive's `resolvePeriodBounds`.
+	// Label/nav bulan berjalan. Batas tanggal datang dari `resolvePeriodBounds` di derive.
 	const INDO_MONTH_FULL = [
 		'Januari',
 		'Februari',
@@ -295,6 +295,8 @@
 	];
 
 	const pad2 = (n: number) => String(n).padStart(2, '0');
+	// Tanggal default form = hari kalender WIB, bukan UTC.
+	const todayIsoWib = (): string => toUtcDateString(todayInJakarta());
 
 	function formatCustomRangeLabel(startIso: string, endIso: string): string {
 		const [sy, sm, sd] = startIso.split('-').map(Number);
@@ -329,8 +331,7 @@
 			};
 		}
 		const [year, month] = bounds.period.split('-').map(Number);
-		const now = new Date();
-		const nowYm = `${now.getUTCFullYear()}-${pad2(now.getUTCMonth() + 1)}`;
+		const nowYm = todayIsoWib().slice(0, 7);
 		const label = `${INDO_MONTH_FULL[month - 1] ?? ''} ${year}`;
 		const prev = month === 1 ? `${year - 1}-12` : `${year}-${pad2(month - 1)}`;
 		const next = month === 12 ? `${year + 1}-01` : `${year}-${pad2(month + 1)}`;
@@ -913,7 +914,7 @@
 						type="date"
 						id="tx-date"
 						name="date"
-						value={new Date().toISOString().slice(0, 10)}
+						value={todayIsoWib()}
 						required
 						class="w-full min-h-[44px] px-3 py-2 text-sm font-bold rounded-md border-2 border-border bg-surface text-content focus:outline-none focus:ring-2 focus:ring-content shadow-hard-xs"
 					/>

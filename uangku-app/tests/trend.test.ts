@@ -1,176 +1,153 @@
 import { describe, it, expect } from 'vitest';
 import {
-	startOfUtcDay,
 	endOfUtcDay,
-	toUtcDateString,
-	parseUtcDateString,
 	getUtcMonday,
-	resolveAnalyticsRange,
-	resolveGranularity,
-	generateBuckets,
-	getBucketKeyForDate
-} from '../src/lib/server/stats';
-
-describe('Analytics Date & Range Preset Logic', () => {
-	// Fixed anchor point: Wednesday, 2026-11-12T15:30:00.000Z
-	const fixedNow = new Date('2026-11-12T15:30:00.000Z');
-
+	jakartaMonthKey,
+	lastUtcDayOfMonth,
+	pad2,
+	parseUtcDateString,
+	startOfUtcDay,
+	todayInJakarta,
+	toUtcDateString,
+	daysBetweenUtc
+} from '../src/lib/shared/dates';
+import { deriveAnalytics } from '../src/lib/client/derive/aggregates';
+import type { CategoryDTO, TransactionDTO, WalletDTO } from '../src/lib/shared/sync-contract';
+// Anchor: Wednesday 2026-11-12T15:30:00.000Z (22:30 WIB, still 12 November in Jakarta).
+const fixedNow = new Date('2026-11-12T15:30:00.000Z');
+describe('date helpers (kalender UTC + "hari ini" WIB)', () => {
 	it('normalizes UTC day start and end', () => {
-		const start = startOfUtcDay(fixedNow);
-		expect(start.toISOString()).toBe('2026-11-12T00:00:00.000Z');
-
-		const end = endOfUtcDay(fixedNow);
-		expect(end.toISOString()).toBe('2026-11-12T23:59:59.999Z');
-	});
-
-	it('formats and parses UTC YYYY-MM-DD date strings', () => {
+		expect(startOfUtcDay(fixedNow).toISOString()).toBe('2026-11-12T00:00:00.000Z');
+		expect(endOfUtcDay(fixedNow).toISOString()).toBe('2026-11-12T23:59:59.999Z');
 		expect(toUtcDateString(fixedNow)).toBe('2026-11-12');
-
-		const parsed = parseUtcDateString('2026-05-01');
-		expect(parsed).not.toBeNull();
-		expect(parsed?.toISOString()).toBe('2026-05-01T00:00:00.000Z');
-
-		expect(parseUtcDateString('invalid-date')).toBeNull();
-		expect(parseUtcDateString('2026-11')).toBeNull();
-		expect(parseUtcDateString('not-a-date')).toBeNull();
 	});
-
-	it('computes UTC Monday correctly for various days of the week', () => {
-		// 2026-11-12 is Thursday -> Monday is 2026-11-09
-		const monFromThu = getUtcMonday(new Date('2026-11-12T10:00:00.000Z'));
-		expect(toUtcDateString(monFromThu)).toBe('2026-11-09');
-
-		// 2026-11-15 is Sunday -> Monday is 2026-11-09
-		const monFromSun = getUtcMonday(new Date('2026-11-15T12:00:00.000Z'));
-		expect(toUtcDateString(monFromSun)).toBe('2026-11-09');
-
-		// 2026-11-09 is already Monday -> stays Monday 2026-11-09
-		const monFromMon = getUtcMonday(new Date('2026-11-09T08:00:00.000Z'));
-		expect(toUtcDateString(monFromMon)).toBe('2026-11-09');
+	it('parses date strings strictly, rejecting impossible dates', () => {
+		expect(parseUtcDateString('2026-11-12')?.toISOString()).toBe('2026-11-12T00:00:00.000Z');
+		expect(parseUtcDateString('2024-02-29')?.toISOString()).toBe('2024-02-29T00:00:00.000Z');
+		expect(parseUtcDateString('2026-02-31')).toBeNull();
+		expect(parseUtcDateString('2026-02-29')).toBeNull();
+		expect(parseUtcDateString('2026-13-01')).toBeNull();
+		expect(parseUtcDateString('2026-1-1')).toBeNull();
+		expect(parseUtcDateString('')).toBeNull();
+		expect(parseUtcDateString('besok')).toBeNull();
 	});
-
-	describe('resolveAnalyticsRange with fixed now', () => {
-		it('resolves "week" range (Monday 00:00:00 to today 23:59:59.999) with previous period', () => {
-			const res = resolveAnalyticsRange('week', null, null, null, fixedNow);
-			expect(res.range).toBe('week');
-			expect(res.from).toBe('2026-11-09T00:00:00.000Z');
-			expect(res.to).toBe('2026-11-12T23:59:59.999Z');
-			expect(res.fromDateStr).toBe('2026-11-09');
-			expect(res.toDateStr).toBe('2026-11-12');
-			expect(res.daysCount).toBe(4); // 9, 10, 11, 12 = 4 days
-			expect(res.previous).not.toBeNull();
-			expect(res.previous?.to).toBe('2026-11-08T23:59:59.999Z');
-		});
-
-		it('resolves "month" range (1st of month 00:00:00 to today 23:59:59.999)', () => {
-			const res = resolveAnalyticsRange('month', null, null, null, fixedNow);
-			expect(res.range).toBe('month');
-			expect(res.from).toBe('2026-11-01T00:00:00.000Z');
-			expect(res.to).toBe('2026-11-12T23:59:59.999Z');
-			expect(res.fromDateStr).toBe('2026-11-01');
-			expect(res.toDateStr).toBe('2026-11-12');
-			expect(res.daysCount).toBe(12);
-			expect(res.previous).not.toBeNull();
-			expect(res.previous?.to).toBe('2026-10-31T23:59:59.999Z');
-		});
-
-		it('resolves "year" range (Jan 1st 00:00:00 to today 23:59:59.999)', () => {
-			const res = resolveAnalyticsRange('year', null, null, null, fixedNow);
-			expect(res.range).toBe('year');
-			expect(res.from).toBe('2026-01-01T00:00:00.000Z');
-			expect(res.to).toBe('2026-11-12T23:59:59.999Z');
-			expect(res.fromDateStr).toBe('2026-01-01');
-			expect(res.toDateStr).toBe('2026-11-12');
-			expect(res.previous).not.toBeNull();
-			expect(res.previous?.to).toBe('2025-12-31T23:59:59.999Z');
-		});
-
-		it('resolves "all" range using earliest transaction date with previous = null', () => {
-			const earliest = '2025-06-15T08:00:00.000Z';
-			const res = resolveAnalyticsRange('all', null, null, earliest, fixedNow);
-			expect(res.range).toBe('all');
-			expect(res.from).toBe('2025-06-15T00:00:00.000Z');
-			expect(res.to).toBe('2026-11-12T23:59:59.999Z');
-			expect(res.fromDateStr).toBe('2025-06-15');
-			expect(res.toDateStr).toBe('2026-11-12');
-			expect(res.previous).toBeNull();
-		});
-
-		it('resolves "custom" range with valid bounds and previous period', () => {
-			const res = resolveAnalyticsRange('custom', '2026-10-01', '2026-10-15', null, fixedNow);
-			expect(res.range).toBe('custom');
-			expect(res.from).toBe('2026-10-01T00:00:00.000Z');
-			expect(res.to).toBe('2026-10-15T23:59:59.999Z');
-			expect(res.daysCount).toBe(15);
-			expect(res.previous).not.toBeNull();
-			expect(res.previous?.to).toBe('2026-09-30T23:59:59.999Z');
-		});
-
-		it('handles inverted custom range by swapping start and end gracefully', () => {
-			const res = resolveAnalyticsRange('custom', '2026-10-20', '2026-10-10', null, fixedNow);
-			expect(res.from).toBe('2026-10-10T00:00:00.000Z');
-			expect(res.to).toBe('2026-10-20T23:59:59.999Z');
-			expect(res.daysCount).toBe(11);
-		});
+	it('snaps any day of the week back to its Monday', () => {
+		// 2026-11-12 is Thursday, 2026-11-15 Sunday, 2026-11-09 Monday.
+		expect(toUtcDateString(getUtcMonday(new Date('2026-11-12T10:00:00.000Z')))).toBe('2026-11-09');
+		expect(toUtcDateString(getUtcMonday(new Date('2026-11-15T12:00:00.000Z')))).toBe('2026-11-09');
+		expect(toUtcDateString(getUtcMonday(new Date('2026-11-09T08:00:00.000Z')))).toBe('2026-11-09');
+		expect(getUtcMonday(fixedNow).toISOString()).toBe('2026-11-09T00:00:00.000Z');
 	});
-
-	describe('resolveGranularity defaults', () => {
-		it('derives default granularity according to range and duration', () => {
-			expect(resolveGranularity('week')).toBe('day');
-			expect(resolveGranularity('month')).toBe('day');
-			expect(resolveGranularity('year')).toBe('month');
-			expect(resolveGranularity('all')).toBe('month');
-
-			// Custom durations
-			expect(resolveGranularity('custom', null, 30)).toBe('day');
-			expect(resolveGranularity('custom', null, 90)).toBe('week');
-			expect(resolveGranularity('custom', null, 300)).toBe('month');
-
-			// Explicit override
-			expect(resolveGranularity('month', 'week')).toBe('week');
-		});
+	it('takes "today" from the Jakarta calendar, not the UTC calendar', () => {
+		// 00:30 WIB on 13 November is still 17:30 UTC on 12 November.
+		const earlyJakarta = new Date('2026-11-12T17:30:00.000Z');
+		expect(toUtcDateString(todayInJakarta(earlyJakarta))).toBe('2026-11-13');
+		expect(toUtcDateString(todayInJakarta(new Date('2026-11-12T16:59:00.000Z')))).toBe('2026-11-12');
+		expect(jakartaMonthKey(new Date('2026-10-31T20:00:00.000Z'))).toBe('2026-11');
+		expect(jakartaMonthKey(new Date('2026-10-31T16:00:00.000Z'))).toBe('2026-10');
 	});
-
-	describe('generateBuckets & gap filling', () => {
-		it('generates ascending daily buckets with 0 initial values and no gaps', () => {
-			const buckets = generateBuckets('2026-11-01T00:00:00.000Z', '2026-11-05T23:59:59.999Z', 'day');
-			expect(buckets).toHaveLength(5);
-			expect(buckets.map((b) => b.bucket)).toEqual([
-				'2026-11-01',
-				'2026-11-02',
-				'2026-11-03',
-				'2026-11-04',
-				'2026-11-05'
-			]);
-			expect(buckets.every((b) => b.income === 0 && b.expense === 0)).toBe(true);
-		});
-
-		it('generates weekly buckets starting on Mondays', () => {
-			const buckets = generateBuckets('2026-11-01T00:00:00.000Z', '2026-11-20T23:59:59.999Z', 'week');
-			expect(buckets.length).toBeGreaterThanOrEqual(3);
-			// First bucket Monday is 2026-10-26 (since 2026-11-01 is Sunday)
-			expect(buckets[0].bucket).toBe('2026-10-26');
-			expect(buckets[1].bucket).toBe('2026-11-02');
-		});
-
-		it('generates monthly buckets in Indonesian label names', () => {
-			const buckets = generateBuckets('2026-08-01T00:00:00.000Z', '2026-11-30T23:59:59.999Z', 'month');
-			expect(buckets.map((b) => b.bucket)).toEqual(['2026-08', '2026-09', '2026-10', '2026-11']);
-			expect(buckets.map((b) => b.label)).toEqual(['Agu', 'Sep', 'Okt', 'Nov']);
-		});
-
-		it('appends 2-digit year to month label when spanning multiple years', () => {
-			const buckets = generateBuckets('2025-11-01T00:00:00.000Z', '2026-02-28T23:59:59.999Z', 'month');
-			expect(buckets.map((b) => b.label)).toEqual(['Nov 25', 'Des 25', 'Jan 26', 'Feb 26']);
-		});
+	it('counts whole days between two UTC days', () => {
+		expect(daysBetweenUtc(new Date('2026-11-01T00:00:00.000Z'), new Date('2026-11-12T00:00:00.000Z'))).toBe(11);
+		expect(daysBetweenUtc(new Date('2026-11-12T00:00:00.000Z'), new Date('2026-11-12T00:00:00.000Z'))).toBe(0);
+		expect(pad2(3)).toBe('03');
+		expect(lastUtcDayOfMonth(2026, 1)).toBe(28);
 	});
-
-	describe('getBucketKeyForDate', () => {
-		const sampleTx = '2026-11-12T14:30:00.000Z'; // Thursday
-		it('maps timestamp to correct day, week (Monday), and month keys', () => {
-			expect(getBucketKeyForDate(sampleTx, 'day')).toBe('2026-11-12');
-			expect(getBucketKeyForDate(sampleTx, 'week')).toBe('2026-11-09');
-			expect(getBucketKeyForDate(sampleTx, 'month')).toBe('2026-11');
-		});
+});
+function wallet(id: string): WalletDTO {
+	return {
+		id,
+		userId: 'u1',
+		name: `Dompet ${id}`,
+		type: 'cash',
+		initialBalance: 0,
+		currentBalance: 0,
+		icon: null,
+		archived: false,
+		hlc: `hlc-${id}`,
+		serverUpdatedAt: 1,
+		deletedAt: null,
+		createdAt: '2026-01-01T00:00:00.000Z'
+	};
+}
+function category(id: string): CategoryDTO {
+	return {
+		id,
+		userId: 'u1',
+		name: `Kategori ${id}`,
+		kind: 'expense',
+		icon: null,
+		color: null,
+		archived: false,
+		hlc: `hlc-${id}`,
+		serverUpdatedAt: 1,
+		deletedAt: null,
+		createdAt: '2026-01-01T00:00:00.000Z'
+	};
+}
+function tx(id: string, type: TransactionDTO['type'], amount: number, ymd: string): TransactionDTO {
+	return {
+		id,
+		userId: 'u1',
+		walletId: 'w1',
+		categoryId: type === 'transfer' ? null : 'c1',
+		type,
+		amount,
+		transferWalletId: type === 'transfer' ? 'w2' : null,
+		note: null,
+		occurredAt: `${ymd}T00:00:00.000Z`,
+		receiptKey: null,
+		hlc: `hlc-${id}`,
+		serverUpdatedAt: 1,
+		deletedAt: null,
+		createdAt: `${ymd}T00:00:00.000Z`,
+		updatedAt: `${ymd}T00:00:00.000Z`
+	};
+}
+const wallets = [wallet('w1'), wallet('w2')];
+const categories = [category('c1')];
+describe('series buckets from deriveAnalytics', () => {
+	it('fills every day of the range, including days without transactions', () => {
+		const txs = [
+			tx('t1', 'income', 100_000, '2026-11-02'),
+			tx('t2', 'expense', 40_000, '2026-11-05'),
+			tx('t3', 'expense', 10_000, '2026-11-05')
+		];
+		const result = deriveAnalytics(txs, wallets, categories, { range: 'month' }, fixedNow);
+		expect(result.series).toHaveLength(30);
+		expect(result.series[0]).toMatchObject({ bucket: '2026-11-01', income: 0, expense: 0 });
+		expect(result.series[1]).toMatchObject({ bucket: '2026-11-02', income: 100_000, expense: 0 });
+		expect(result.series[4]).toMatchObject({ bucket: '2026-11-05', income: 0, expense: 50_000 });
+		expect(result.series[29]).toMatchObject({ bucket: '2026-11-30', income: 0, expense: 0 });
+		// Transaksi tanggal depan tetap tampil karena rentang memakai batas kalender.
+		expect(result.filters.endDate).toBe('2026-11-30');
+	});
+	it('groups weekly buckets by the Monday of each ISO week', () => {
+		const txs = [
+			tx('t1', 'expense', 10_000, '2026-11-09'),
+			tx('t2', 'expense', 20_000, '2026-11-15'),
+			tx('t3', 'expense', 30_000, '2026-11-16')
+		];
+		const result = deriveAnalytics(
+			txs,
+			wallets,
+			categories,
+			{ range: 'custom', from: '2026-11-09', to: '2026-11-22', granularity: 'week' },
+			fixedNow
+		);
+		expect(result.series.map((s) => s.bucket)).toEqual(['2026-11-09', '2026-11-16']);
+		expect(result.series.map((s) => s.expense)).toEqual([30_000, 30_000]);
+	});
+	it('labels multi-year month buckets with a two-digit year', () => {
+		const txs = [tx('t1', 'expense', 10_000, '2026-01-15')];
+		const result = deriveAnalytics(
+			txs,
+			wallets,
+			categories,
+			{ range: 'custom', from: '2025-11-01', to: '2026-02-28', granularity: 'month' },
+			fixedNow
+		);
+		expect(result.series.map((s) => s.bucket)).toEqual(['2025-11', '2025-12', '2026-01', '2026-02']);
+		expect(result.series.map((s) => s.label)).toEqual(['Nov 25', 'Des 25', 'Jan 26', 'Feb 26']);
+		expect(result.series[2].expense).toBe(10_000);
 	});
 });
