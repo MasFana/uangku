@@ -3,6 +3,8 @@
 	import Input from '../../lib/components/Input.svelte';
 	import Button from '../../lib/components/Button.svelte';
 	import Logo from '../../lib/components/Logo.svelte';
+	import GoogleButton from '../../lib/components/GoogleButton.svelte';
+	import { safeRedirectPath } from '$lib/shared/safe-redirect';
 	import type { PageData } from './$types';
 
 	let { data }: { data: PageData } = $props();
@@ -62,10 +64,7 @@
 			}
 
 			// Login success -> redirect to safe destination
-			const dest = data.redirectTo && data.redirectTo.startsWith('/') && !data.redirectTo.startsWith('//') && !data.redirectTo.startsWith('/\\')
-				? data.redirectTo
-				: '/';
-			window.location.href = dest;
+			window.location.href = safeRedirectPath(data.redirectTo);
 		} catch (err) {
 			errorMessage = 'Koneksi ke server gagal. Periksa sambungan internet Anda.';
 			loading = false;
@@ -87,7 +86,7 @@
 			Masuk ke Akun
 		</h1>
 
-		{#if errorMessage}
+		{#if errorMessage || data.oauthError}
 			<div
 				class="mb-4 p-3 rounded border-2 border-border bg-expense text-expense-foreground text-xs font-bold flex items-start gap-2 shadow-hard-sm"
 				role="alert"
@@ -95,7 +94,17 @@
 				<svg class="w-4 h-4 shrink-0 mt-0.5" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
 					<path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.28 7.22a.75.75 0 00-1.06 1.06L8.94 10l-1.72 1.72a.75.75 0 101.06 1.06L10 11.06l1.72 1.72a.75.75 0 101.06-1.06L11.06 10l1.72-1.72a.75.75 0 00-1.06-1.06L10 8.94 8.28 7.22z" clip-rule="evenodd" />
 				</svg>
-				<span>{errorMessage}</span>
+				<span>{errorMessage ?? data.oauthError}</span>
+			</div>
+		{/if}
+		{#if data.googleEnabled}
+			<div class="mb-5">
+				<GoogleButton callbackURL={data.redirectTo} />
+				<div class="mt-4 flex items-center gap-3" aria-hidden="true">
+					<span class="h-0.5 flex-1 bg-border/30"></span>
+					<span class="text-xs font-bold text-content-muted">atau</span>
+					<span class="h-0.5 flex-1 bg-border/30"></span>
+				</div>
 			</div>
 		{/if}
 

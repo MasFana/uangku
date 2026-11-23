@@ -3,6 +3,9 @@
 	import Input from '../../lib/components/Input.svelte';
 	import Button from '../../lib/components/Button.svelte';
 	import Logo from '../../lib/components/Logo.svelte';
+	import GoogleButton from '../../lib/components/GoogleButton.svelte';
+	import type { PageData } from './$types';
+	let { data }: { data: PageData } = $props();
 
 	let name = $state('');
 	let email = $state('');
@@ -109,6 +112,16 @@
 			</div>
 		{/if}
 
+		{#if data.googleEnabled}
+			<div class="mb-5">
+				<GoogleButton callbackURL="/" />
+				<div class="mt-4 flex items-center gap-3" aria-hidden="true">
+					<span class="h-0.5 flex-1 bg-border/30"></span>
+					<span class="text-xs font-bold text-content-muted">atau</span>
+					<span class="h-0.5 flex-1 bg-border/30"></span>
+				</div>
+			</div>
+		{/if}
 		<form onsubmit={handleSubmit} class="space-y-3.5" novalidate>
 			<Input
 				label="Nama Lengkap"

@@ -2,6 +2,17 @@ import type { AppDatabase } from './lib/server/db/client';
 import type { AuthInstance } from './lib/server/auth';
 
 declare global {
+	namespace Cloudflare {
+		// Secrets are set with `wrangler secret put` or in `.dev.vars`, so `wrangler types`
+		// never lists them; declaring them here keeps `env.X` typed.
+		interface Env {
+			BETTER_AUTH_SECRET?: string;
+			BETTER_AUTH_URL?: string;
+			BETTER_AUTH_TRUSTED_ORIGINS?: string;
+			GOOGLE_CLIENT_ID?: string;
+			GOOGLE_CLIENT_SECRET?: string;
+		}
+	}
 	namespace App {
 		// interface Error {}
 		interface Locals {

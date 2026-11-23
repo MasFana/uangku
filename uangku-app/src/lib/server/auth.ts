@@ -12,7 +12,30 @@ export interface AuthEnv {
 	BETTER_AUTH_SECRET?: string;
 	BETTER_AUTH_URL?: string;
 	BETTER_AUTH_TRUSTED_ORIGINS?: string;
+	GOOGLE_CLIENT_ID?: string;
+	GOOGLE_CLIENT_SECRET?: string;
 	[key: string]: unknown;
+}
+
+/** Google sign-in needs both keys; without them the provider stays off and its button is hidden. */
+export function isGoogleEnabled(env: GoogleEnv): boolean {
+	return Boolean(env.GOOGLE_CLIENT_ID) && Boolean(env.GOOGLE_CLIENT_SECRET);
+}
+
+export type GoogleEnv = {
+	GOOGLE_CLIENT_ID?: string;
+	GOOGLE_CLIENT_SECRET?: string;
+};
+
+function socialProviders(env: AuthEnv) {
+	if (!isGoogleEnabled(env)) return {};
+	return {
+		google: {
+			clientId: env.GOOGLE_CLIENT_ID as string,
+			clientSecret: env.GOOGLE_CLIENT_SECRET as string,
+			prompt: 'select_account' as const
+		}
+	};
 }
 
 /** Extra origins for sign-in, comma separated in `BETTER_AUTH_TRUSTED_ORIGINS`. */
@@ -62,6 +85,16 @@ export function createAuth(env: AuthEnv, event?: RequestEvent) {
 				}
 			}
 		},
+		account: {
+			// Never link a Google identity into an existing row automatically: our rows have
+			// `email_verified = false`, so the provider's claim alone cannot prove ownership.
+			// Users link Google from Settings while signed in (`/api/auth/link-social`).
+			accountLinking: {
+				enabled: true,
+				disableImplicitLinking: true
+			}
+		},
+		socialProviders: socialProviders(env),
 		secret: env.BETTER_AUTH_SECRET ?? 'uangku-dev-secret-minimum-32-chars-long',
 		baseURL: env.BETTER_AUTH_URL,
 		trustedOrigins: parseTrustedOrigins(env.BETTER_AUTH_TRUSTED_ORIGINS),

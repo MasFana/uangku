@@ -1,7 +1,9 @@
 <script lang="ts">
 	import Card from '$lib/components/Card.svelte';
 	import Button from '$lib/components/Button.svelte';
+	import GoogleButton from '$lib/components/GoogleButton.svelte';
 	import Logo from '$lib/components/Logo.svelte';
+	import { currentUrl } from '$lib/client/url-state';
 	import { syncEngine } from '$lib/client/sync/engine.svelte';
 	import { openLedgerDB, idbGet, idbGetAll, type OutboxRecord } from '$lib/client/db/idb';
 	import {
@@ -11,9 +13,39 @@
 		type CursorInfo,
 		type OutboxRow
 	} from '$lib/client/db/sync-diagnostics';
-	import type { PageData } from './$types';
+	import type { ActionData, PageData } from './$types';
 
-	let { data }: { data: PageData } = $props();
+	let { data, form }: { data: PageData; form: ActionData } = $props();
+
+	interface LinkedAccount {
+		id: string;
+		providerId: string;
+	}
+
+	/** Provider list from `/api/auth/list-accounts`; null while the first read runs. */
+	let accounts = $state<LinkedAccount[] | null>(null);
+	let accountsError = $state<string | null>(null);
+
+	const googleLinked = $derived(accounts?.some((account) => account.providerId === 'google') ?? false);
+	const hasPassword = $derived(
+		accounts?.some((account) => account.providerId === 'credential') ?? false
+	);
+	const linkedNotice = $derived(
+		currentUrl().searchParams.get('linked') === 'google'
+			? 'Akun Google berhasil dihubungkan.'
+			: null
+	);
+
+	async function loadAccounts() {
+		try {
+			const res = await fetch('/api/auth/list-accounts');
+			if (!res.ok) throw new Error(`HTTP ${res.status}`);
+			accounts = (await res.json()) as LinkedAccount[];
+			accountsError = null;
+		} catch (err) {
+			accountsError = err instanceof Error ? err.message : String(err);
+		}
+	}
 
 	interface LocalSnapshot {
 		rows: OutboxRow[];
@@ -85,6 +117,10 @@
 		if (engineSignature.startsWith('syncing')) return;
 		void refreshLocalSnapshot();
 	});
+
+	$effect(() => {
+		void loadAccounts();
+	});
 </script>
 
 <svelte:head>
@@ -122,6 +158,82 @@
 				</p>
 			</div>
 		</div>
+	</Card>
+
+	<!-- Akun Terhubung & Keamanan -->
+	<Card class="p-6 space-y-4">
+		<h2 class="text-base font-black text-content border-b-2 border-border/10 pb-2">
+			Cara Masuk
+		</h2>
+
+		{#if linkedNotice}
+			<p class="text-xs font-bold text-content" role="status">{linkedNotice}</p>
+		{/if}
+		{#if form?.message}
+			<p class="text-xs font-bold text-content" role="status">{form.message}</p>
+		{/if}
+		{#if form?.error}
+			<p class="text-xs font-bold text-danger" role="alert">{form.error}</p>
+		{/if}
+		{#if currentUrl().searchParams.get('linkError')}
+			<p class="text-xs font-bold text-danger" role="alert">
+				Google tidak jadi dihubungkan. Coba lagi.
+			</p>
+		{/if}
+
+		{#if accountsError}
+			<div class="space-y-2">
+				<p class="text-xs font-bold text-danger" role="alert">
+					Gagal membaca daftar akun terhubung ({accountsError}).
+				</p>
+				<Button variant="secondary" size="sm" onclick={loadAccounts}>Coba lagi</Button>
+			</div>
+		{:else if accounts === null}
+			<p class="text-xs text-content-muted">memuat cara masuk...</p>
+		{:else}
+			<div class="space-y-4">
+				<div>
+					<span class="text-xs font-bold text-content-muted block">Google</span>
+					<p class="text-sm font-bold text-content mt-0.5">
+						{googleLinked ? 'Terhubung' : 'Belum terhubung'}
+					</p>
+					{#if data.googleEnabled && !googleLinked}
+						<div class="pt-2">
+							<GoogleButton mode="link" callbackURL="/settings?linked=google" />
+						</div>
+					{/if}
+				</div>
+
+				<div>
+					<span class="text-xs font-bold text-content-muted block">Kata Sandi</span>
+					<p class="text-sm font-bold text-content mt-0.5">
+						{hasPassword ? 'Sudah aktif' : 'Belum ada'}
+					</p>
+					{#if !hasPassword}
+						<form method="POST" action="?/setPassword" class="pt-2 space-y-2">
+							<label class="text-xs font-bold text-content" for="new-password">
+								Buat kata sandi (minimal 8 karakter)
+							</label>
+							<input
+								id="new-password"
+								name="newPassword"
+								type="password"
+								autocomplete="new-password"
+								required
+								minlength="8"
+								class="w-full min-h-[44px] px-3 py-2 rounded-md border-2 border-border bg-surface text-content text-sm font-bold focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-content"
+							/>
+							<Button type="submit" variant="secondary" size="md" class="w-full">
+								Simpan Kata Sandi
+							</Button>
+						</form>
+						<p class="mt-2 text-xs text-content-muted">
+							Setelah ini Anda bisa masuk pakai email dan kata sandi, bukan hanya Google.
+						</p>
+					{/if}
+				</div>
+			</div>
+		{/if}
 	</Card>
 
 	<!-- Navigasi Cepat Pengaturan -->
