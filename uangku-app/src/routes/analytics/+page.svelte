@@ -223,10 +223,10 @@
 			<!-- Pemasukan Total -->
 			<Card class="p-3 sm:p-4">
 				<p class="text-[11px] font-bold text-content-muted uppercase tracking-wider mb-0.5">Total Pemasukan</p>
-				<p class="text-base sm:text-lg font-black font-mono text-income tabular-nums">
+				<p class="text-base sm:text-lg font-black font-mono text-income tabular-nums whitespace-nowrap">
 					+{formatRupiah(summary.income)}
 				</p>
-				<a href={txHref({ type: 'income' })} class="mt-1 inline-flex items-center min-h-[44px] text-[11px] font-bold text-brand underline">
+				<a href={txHref({ type: 'income' })} class="mt-1 inline-flex items-center min-h-[44px] text-[11px] font-bold text-brand underline whitespace-nowrap">
 					Lihat transaksi
 				</a>
 			</Card>
@@ -234,10 +234,10 @@
 			<!-- Pengeluaran Total -->
 			<Card class="p-3 sm:p-4">
 				<p class="text-[11px] font-bold text-content-muted uppercase tracking-wider mb-0.5">Total Pengeluaran</p>
-				<p class="text-base sm:text-lg font-black font-mono text-expense tabular-nums">
+				<p class="text-base sm:text-lg font-black font-mono text-expense tabular-nums whitespace-nowrap">
 					-{formatRupiah(summary.expense)}
 				</p>
-				<a href={txHref({ type: 'expense' })} class="mt-1 inline-flex items-center min-h-[44px] text-[11px] font-bold text-brand underline">
+				<a href={txHref({ type: 'expense' })} class="mt-1 inline-flex items-center min-h-[44px] text-[11px] font-bold text-brand underline whitespace-nowrap">
 					Lihat transaksi
 				</a>
 			</Card>
@@ -245,7 +245,7 @@
 			<!-- Net Cashflow -->
 			<Card class="p-3 sm:p-4">
 				<p class="text-[11px] font-bold text-content-muted uppercase tracking-wider mb-0.5">Selisih Bersih</p>
-				<p class="text-base sm:text-lg font-black font-mono tabular-nums {summary.net >= 0 ? 'text-income' : 'text-expense'}">
+				<p class="text-base sm:text-lg font-black font-mono tabular-nums whitespace-nowrap {summary.net >= 0 ? 'text-income' : 'text-expense'}">
 					{summary.net >= 0 ? '+' : '-'}{formatRupiah(Math.abs(summary.net))}
 				</p>
 				{#if netDiff}
@@ -259,7 +259,7 @@
 			<!-- Jumlah Transaksi -->
 			<Card class="p-3 sm:p-4">
 				<p class="text-[11px] font-bold text-content-muted uppercase tracking-wider mb-0.5">Total Transaksi</p>
-				<p class="text-base sm:text-lg font-black font-mono text-content tabular-nums">
+				<p class="text-base sm:text-lg font-black font-mono text-content tabular-nums whitespace-nowrap">
 					{summary.count} transaksi
 				</p>
 				<p class="text-[11px] text-content-muted mt-1">
@@ -269,7 +269,7 @@
 						tanpa transfer
 					{/if}
 				</p>
-				<a href={txHref()} class="mt-1 inline-flex items-center min-h-[44px] text-[11px] font-bold text-brand underline">
+				<a href={txHref()} class="mt-1 inline-flex items-center min-h-[44px] text-[11px] font-bold text-brand underline whitespace-nowrap">
 					Lihat transaksi
 				</a>
 			</Card>
@@ -279,7 +279,7 @@
 				<p class="text-[11px] font-bold text-content-muted uppercase tracking-wider mb-0.5">
 					Rata-rata {basisLabel} / Hari
 				</p>
-				<p class="text-base sm:text-lg font-black font-mono text-content tabular-nums">
+				<p class="text-base sm:text-lg font-black font-mono text-content tabular-nums whitespace-nowrap">
 					{formatRupiah(summary.avgPerDay)}
 				</p>
 				<p class="text-[11px] text-content-muted mt-1">
@@ -293,7 +293,7 @@
 				{#if summary.largest}
 					{@const largest = summary.largest}
 					{@const isIncome = largest.type === 'income'}
-					<p class="text-base sm:text-lg font-black font-mono tabular-nums {isIncome ? 'text-income' : 'text-expense'}">
+					<p class="text-base sm:text-lg font-black font-mono tabular-nums whitespace-nowrap {isIncome ? 'text-income' : 'text-expense'}">
 						{isIncome ? '+' : '-'}{formatRupiah(largest.amount)}
 					</p>
 					<p class="text-[11px] mt-0.5">
@@ -307,7 +307,7 @@
 						{#if largest.walletName} · {largest.walletName}{/if}
 					</p>
 					{#if largestHref}
-						<a href={largestHref} class="mt-1 inline-flex items-center min-h-[44px] text-[11px] font-bold text-brand underline">
+						<a href={largestHref} class="mt-1 inline-flex items-center min-h-[44px] text-[11px] font-bold text-brand underline whitespace-nowrap">
 							Lihat transaksi
 						</a>
 					{/if}
@@ -353,7 +353,7 @@
 						<h2 class="text-sm sm:text-base font-black text-content tracking-tight">
 							{basisLabel} per Kategori
 						</h2>
-						<span class="text-xs font-bold text-content-muted font-mono tabular-nums">
+						<span class="text-xs font-bold text-content-muted font-mono tabular-nums whitespace-nowrap">
 							{formatRupiah(expenseBasis ? summary.expense : summary.income)}
 						</span>
 					</div>
@@ -377,7 +377,7 @@
 										{:else}
 											<span class="text-content truncate">{cat.name}</span>
 										{/if}
-										<span class="font-mono tabular-nums text-content-muted shrink-0">
+										<span class="font-mono tabular-nums text-content-muted shrink-0 whitespace-nowrap">
 											{formatRupiah(cat.total)} ({pct}%)
 										</span>
 									</div>
@@ -433,9 +433,9 @@
 												saldo {w.netChange >= 0 ? '+' : '-'}{formatRupiah(Math.abs(w.netChange))}
 											</span>
 										</td>
-										<td class="py-2 px-2 text-right font-mono tabular-nums text-income align-top">+{formatRupiah(w.income)}</td>
-										<td class="py-2 px-2 text-right font-mono tabular-nums text-expense align-top">-{formatRupiah(w.expense)}</td>
-										<td class="py-2 pl-2 text-right font-mono tabular-nums font-bold align-top {w.net >= 0 ? 'text-income' : 'text-expense'}">
+										<td class="py-2 px-2 text-right font-mono tabular-nums text-income align-top whitespace-nowrap">+{formatRupiah(w.income)}</td>
+										<td class="py-2 px-2 text-right font-mono tabular-nums text-expense align-top whitespace-nowrap">-{formatRupiah(w.expense)}</td>
+										<td class="py-2 pl-2 text-right font-mono tabular-nums font-bold align-top whitespace-nowrap {w.net >= 0 ? 'text-income' : 'text-expense'}">
 											{w.net >= 0 ? '+' : '-'}{formatRupiah(Math.abs(w.net))}
 										</td>
 									</tr>

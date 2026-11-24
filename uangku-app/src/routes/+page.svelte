@@ -78,13 +78,13 @@
 		<div class="grid grid-cols-2 gap-2 sm:gap-3 mt-3 pt-2.5 sm:pt-3 border-t-2 border-border/20">
 			<div>
 				<p class="text-[11px] sm:text-xs font-bold text-brand-foreground/90 leading-tight">Pemasukan Bulan Ini</p>
-				<p class="text-sm sm:text-base font-bold font-mono tabular-nums text-brand-foreground leading-tight mt-0.5">
+				<p class="text-sm sm:text-base font-bold font-mono tabular-nums text-brand-foreground leading-tight mt-0.5 whitespace-nowrap">
 					+{formatRupiah(summary.currentMonth?.income ?? 0)}
 				</p>
 			</div>
 			<div>
 				<p class="text-[11px] sm:text-xs font-bold text-brand-foreground/90 leading-tight">Pengeluaran Bulan Ini</p>
-				<p class="text-sm sm:text-base font-bold font-mono tabular-nums text-brand-foreground leading-tight mt-0.5">
+				<p class="text-sm sm:text-base font-bold font-mono tabular-nums text-brand-foreground leading-tight mt-0.5 whitespace-nowrap">
 					-{formatRupiah(summary.currentMonth?.expense ?? 0)}
 				</p>
 			</div>
@@ -138,7 +138,7 @@
 								<p class="text-sm font-bold text-content">{wallet.name}</p>
 								<span class="text-xs text-content-muted capitalize">{wallet.type}</span>
 							</div>
-							<p class="text-sm font-bold font-mono tabular-nums text-content">
+							<p class="text-sm font-bold font-mono tabular-nums text-content whitespace-nowrap">
 								{formatRupiah(wallet.currentBalance ?? 0)}
 							</p>
 						</div>
@@ -175,7 +175,7 @@
 						<div class="space-y-1">
 							<div class="flex items-center justify-between text-xs font-bold">
 								<span class="text-content truncate">{cat.categoryName}</span>
-								<span class="font-mono tabular-nums text-content">
+								<span class="font-mono tabular-nums text-content whitespace-nowrap">
 									{formatRupiah(cat.total)} ({percentage}%)
 								</span>
 							</div>
@@ -231,7 +231,7 @@
 							<p class="text-xs text-content-muted">{walletMap.get(tx.walletId) || 'Dompet'}</p>
 						</div>
 						<div class="text-right shrink-0">
-							<p class="text-base font-bold font-mono tabular-nums {tx.type === 'income' ? 'text-income' : tx.type === 'expense' ? 'text-expense' : 'text-content'}">
+							<p class="text-base font-bold font-mono tabular-nums whitespace-nowrap {tx.type === 'income' ? 'text-income' : tx.type === 'expense' ? 'text-expense' : 'text-content'}">
 								{tx.type === 'income' ? '+' : tx.type === 'expense' ? '-' : ''}{formatRupiah(tx.amount)}
 							</p>
 						</div>
