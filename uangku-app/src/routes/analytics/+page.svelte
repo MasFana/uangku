@@ -249,9 +249,10 @@
 					{summary.net >= 0 ? '+' : '-'}{formatRupiah(Math.abs(summary.net))}
 				</p>
 				{#if netDiff}
-					<p class="text-[11px] font-bold mt-1 flex items-center gap-1 {netDiff.isPositive ? 'text-income' : 'text-expense'}">
+					<p class="text-[11px] font-bold mt-1 flex flex-wrap items-center gap-x-1 gap-y-0.5 {netDiff.isPositive ? 'text-income' : 'text-expense'}">
 						<span aria-hidden="true">{netDiff.isPositive ? '▲' : '▼'}</span>
-						<span>{netDiff.label} vs {previous?.label}</span>
+						<span class="whitespace-nowrap">{netDiff.label}</span>
+						<span class="whitespace-nowrap">vs {previous?.label}</span>
 					</p>
 				{/if}
 			</Card>
@@ -296,11 +297,11 @@
 					<p class="text-base sm:text-lg font-black font-mono tabular-nums whitespace-nowrap {isIncome ? 'text-income' : 'text-expense'}">
 						{isIncome ? '+' : '-'}{formatRupiah(largest.amount)}
 					</p>
-					<p class="text-[11px] mt-0.5">
-						<span class="font-bold {isIncome ? 'text-income' : 'text-expense'}">
+					<p class="text-[11px] mt-0.5 flex flex-wrap items-center gap-x-1 gap-y-0.5">
+						<span class="font-bold whitespace-nowrap {isIncome ? 'text-income' : 'text-expense'}">
 							{isIncome ? 'Pemasukan' : 'Pengeluaran'}
 						</span>
-						<span class="text-content-muted">· {formatDateIndo(largest.occurredAt)}</span>
+						<span class="text-content-muted whitespace-nowrap">· {formatDateIndo(largest.occurredAt)}</span>
 					</p>
 					<p class="text-[11px] text-content-muted truncate">
 						{largest.note || largest.categoryName || 'Tanpa catatan'}{#if largest.note && largest.categoryName} · {largest.categoryName}{/if}

@@ -221,11 +221,11 @@
 				{#each summary.recentTransactions as tx}
 					<div class="p-3 rounded-lg border-2 border-border bg-surface shadow-hard-xs flex items-center justify-between gap-3">
 						<div class="min-w-0 flex-1">
-							<div class="flex items-center gap-2 mb-0.5">
+							<div class="flex flex-wrap items-center gap-x-2 gap-y-1 mb-0.5">
 								<Badge variant={tx.type === 'income' ? 'income' : tx.type === 'expense' ? 'expense' : 'neutral'}>
 									{tx.type === 'income' ? 'Pemasukan' : tx.type === 'expense' ? 'Pengeluaran' : 'Transfer'}
 								</Badge>
-								<span class="text-xs text-content-muted">{formatDateIndo(tx.occurredAt)}</span>
+								<span class="text-xs text-content-muted whitespace-nowrap">{formatDateIndo(tx.occurredAt)}</span>
 							</div>
 							<p class="text-sm font-bold text-content truncate">{tx.note || 'Transaksi'}</p>
 							<p class="text-xs text-content-muted">{walletMap.get(tx.walletId) || 'Dompet'}</p>
